@@ -132,6 +132,10 @@
 					 SHD_REG_UP_REQ_CMP | \
 					 SHD_REG_UP_REQ_ALL_WIN)
 
+static unsigned int shd_req = SHD_REG_UP_REQ_FLIP;
+module_param(shd_req, uint, 0444);
+MODULE_PARM_DESC(shd_req, "Debug: SHD_REG_UP_REQ bits requested on a flip");
+
 /*
  * DECON clears the shadow update request as the frame starts; allow it
  * this long after the frame start interrupt before deferring the flip's
@@ -412,10 +416,10 @@ static bool gs_decon_flip_latched(struct gs_decon *dc, unsigned int poll_us)
 	u32 req;
 
 	if (!poll_us)
-		return !(readl(dc->regs + DECON_SHD_REG_UP_REQ) & SHD_REG_UP_REQ_FLIP);
+		return !(readl(dc->regs + DECON_SHD_REG_UP_REQ) & shd_req);
 
 	return !readl_poll_timeout_atomic(dc->regs + DECON_SHD_REG_UP_REQ, req,
-					  !(req & SHD_REG_UP_REQ_FLIP), 1, poll_us);
+					  !(req & shd_req), 1, poll_us);
 }
 
 static irqreturn_t gs_decon_fs_irq(int irq, void *data)
@@ -522,7 +526,7 @@ static void gs_decon_set_scanout_locked(struct gs_decon *dc, dma_addr_t addr)
 	}
 
 	writel(lower_32_bits(addr), dc->dma + RDMA_BASEADDR_Y8);
-	writel(readl(dc->regs + DECON_SHD_REG_UP_REQ) | SHD_REG_UP_REQ_FLIP,
+	writel(readl(dc->regs + DECON_SHD_REG_UP_REQ) | shd_req,
 	       dc->regs + DECON_SHD_REG_UP_REQ);
 	dc->scanout = addr;
 	dc->flip_pending = true;
@@ -554,7 +558,7 @@ static void gs_decon_park(struct gs_decon *dc)
 	spin_unlock_irqrestore(&dc->lock, flags);
 
 	if (readl_poll_timeout(dc->regs + DECON_SHD_REG_UP_REQ, val,
-			       !(val & SHD_REG_UP_REQ_FLIP), 1000, 40000))
+			       !(val & shd_req), 1000, 40000))
 		dev_warn(dc->dev, "boot framebuffer not taken yet\n");
 }
 
