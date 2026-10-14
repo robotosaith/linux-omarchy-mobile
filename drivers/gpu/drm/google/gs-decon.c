@@ -32,7 +32,8 @@
  *
  * Register layout from Google's GPL display driver
  * (google-modules/display/samsung/cal_9845/regs-decon.h and regs-dpp.h),
- * which gs201 shares with gs101.
+ * which gs201 shares with gs101. On gs101 only DECON0's address and the
+ * interrupt numbers differ (device tree).
  */
 
 #include <linux/aperture.h>
@@ -1403,6 +1404,7 @@ static void gs_decon_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs_decon_of_match[] = {
+	{ .compatible = "google,gs101-decon" },
 	{ .compatible = "google,gs201-decon" },
 	{ /* sentinel */ }
 };

@@ -551,6 +551,7 @@ static void gs_dsim_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs_dsim_of_match[] = {
+	{ .compatible = "google,gs101-dsim" },
 	{ .compatible = "google,gs201-dsim" },
 	{ /* sentinel */ }
 };
