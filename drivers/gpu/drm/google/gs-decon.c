@@ -33,8 +33,9 @@
  *
  * Register layout from Google's GPL display driver
  * (google-modules/display/samsung/cal_9845/regs-decon.h and regs-dpp.h),
- * which gs201 shares with gs101. G4 offsets and the fourteen-window mask
- * follow cal_9865/regs-decon.h and regs-dpp.h in the same GPL driver.
+ * which gs201 shares with gs101. On gs101 only DECON0's address and the
+ * interrupt numbers differ (device tree). G4 offsets and the fourteen-window
+ * mask follow cal_9865/regs-decon.h and regs-dpp.h in the same GPL driver.
  */
 
 #include <linux/aperture.h>
@@ -1536,6 +1537,7 @@ static void gs_decon_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs_decon_of_match[] = {
+	{ .compatible = "google,gs101-decon", .data = &gs201_decon_data },
 	{ .compatible = "google,gs201-decon", .data = &gs201_decon_data },
 	{ .compatible = "google,zumapro-decon", .data = &zumapro_decon_data },
 	{ /* sentinel */ }
