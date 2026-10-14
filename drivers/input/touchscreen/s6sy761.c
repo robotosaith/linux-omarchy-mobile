@@ -665,6 +665,19 @@ static int s6sy761_probe_common(struct s6sy761_data *sdata)
 		return err;
 
 	err = s6sy761_hw_init(sdata, &max_x, &max_y);
+	if (err && sdata->bus->bustype == BUS_SPI) {
+		/*
+		 * At boot the rails can still be on from the bootloader and the
+		 * controller not answer; a real power cycle brings it up.
+		 */
+		dev_info(dev, "no answer (%d), power cycling\n", err);
+		regulator_bulk_disable(ARRAY_SIZE(sdata->regulators),
+				       sdata->regulators);
+		if (sdata->reset)
+			gpiod_set_value_cansleep(sdata->reset, 1);
+		msleep(100);
+		err = s6sy761_hw_init(sdata, &max_x, &max_y);
+	}
 	if (err)
 		return err;
 
