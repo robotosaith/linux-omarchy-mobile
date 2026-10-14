@@ -29,6 +29,7 @@
 #define S6SY761_READ_ALL_EVENT		0x61
 #define S6SY761_CLEAR_EVENT_STACK	0x62
 #define S6SY761_APPLICATION_MODE	0xe4
+#define S6SY761_TS_STATUS		0xaf
 
 /* events */
 #define S6SY761_EVENT_INFO		0x02
@@ -54,6 +55,9 @@
 #define S6SY761_MASK_PALM		BIT(5)
 #define S6SY761_MASK_WET		BIT(6)
 #define S6SY761_MASK_PROXIMITY		BIT(7)
+
+/* touch system mode, TS_STATUS byte 1 */
+#define S6SY761_SYSTEM_MODE_TOUCH	0x02
 
 /* boot status (BS) */
 #define S6SY761_BS_BOOT_LOADER		0x10
@@ -101,7 +105,8 @@
  * data, checksum; a read is requested with AA 00 01, length (2), register,
  * checksum and answered, after a register-dependent delay, with AA, four
  * header bytes, register, status, data, checksum. The checksum is the sum
- * of the preceding bytes, and every transfer is padded to 4 bytes.
+ * of the preceding bytes, and every transfer is padded to 4 bytes. The
+ * reply can come on the second read frame rather than the first.
  */
 #define S6SY761_SPI_SYNC		0xaa
 #define S6SY761_SPI_HDR			5
@@ -193,14 +198,23 @@ static u8 s6sy761_spi_sum(const u8 *buf, unsigned int len)
 	return sum;
 }
 
+static void s6sy761_spi_wake(struct s6sy761_data *sdata);
+
 static int s6sy761_spi_write(struct s6sy761_data *sdata, u8 reg,
 			     const u8 *buf, u16 len)
 {
 	u8 *tx = sdata->spi_tx;
 	unsigned int n = S6SY761_SPI_HDR + 1 + len;
+	int i, ret;
 
 	if (n + 1 > S6SY761_SPI_BUF)
 		return -EINVAL;
+
+	/*
+	 * A command to an idle controller only wakes it up and is lost: wake
+	 * it with a harmless read first. Writes are rare (sense on/off, modes).
+	 */
+	s6sy761_spi_wake(sdata);
 
 	memset(tx, 0, S6SY761_SPI_BUF);
 	tx[0] = S6SY761_SPI_SYNC;
@@ -210,7 +224,13 @@ static int s6sy761_spi_write(struct s6sy761_data *sdata, u8 reg,
 		memcpy(&tx[S6SY761_SPI_HDR + 1], buf, len);
 	tx[n] = s6sy761_spi_sum(tx, n);
 
-	return spi_write(sdata->spi, tx, ALIGN(n + 1, 4));
+	for (i = 0; i < 3; i++) {
+		ret = spi_write(sdata->spi, tx, ALIGN(n + 1, 4));
+		if (!ret)
+			break;
+		usleep_range(1000, 1100);
+	}
+	return ret;
 }
 
 static unsigned int s6sy761_spi_delay_us(u8 reg)
@@ -225,7 +245,8 @@ static unsigned int s6sy761_spi_delay_us(u8 reg)
 	}
 }
 
-static int s6sy761_spi_read(struct s6sy761_data *sdata, u8 reg, u8 *buf, u16 len)
+static int s6sy761_spi_read_once(struct s6sy761_data *sdata, u8 reg, u8 *buf,
+				 u16 len)
 {
 	u8 *tx = sdata->spi_tx, *rx = sdata->spi_rx;
 	unsigned int rlen = S6SY761_SPI_RD_HDR + len;
@@ -253,6 +274,17 @@ static int s6sy761_spi_read(struct s6sy761_data *sdata, u8 reg, u8 *buf, u16 len
 	if (ret)
 		return ret;
 
+	/*
+	 * The controller may only put its reply out on the second read frame
+	 * after a request: the first then carries no sync code. Read again.
+	 */
+	if (rx[0] != S6SY761_SPI_SYNC) {
+		fsleep(delay);
+		ret = spi_read(sdata->spi, rx, ALIGN(rlen + 1, 4));
+		if (ret)
+			return ret;
+	}
+
 	if (rx[0] != S6SY761_SPI_SYNC || rx[S6SY761_SPI_HDR] != reg ||
 	    rx[rlen] != s6sy761_spi_sum(rx, rlen)) {
 		dev_dbg(sdata->dev, "bad SPI reply to %#x: %*ph\n", reg, 16, rx);
@@ -261,6 +293,33 @@ static int s6sy761_spi_read(struct s6sy761_data *sdata, u8 reg, u8 *buf, u16 len
 
 	memcpy(buf, &rx[S6SY761_SPI_RD_HDR], len);
 	return 0;
+}
+
+static void s6sy761_spi_wake(struct s6sy761_data *sdata)
+{
+	u8 status;
+
+	if (s6sy761_spi_read_once(sdata, S6SY761_BOOT_STATUS, &status, 1))
+		s6sy761_spi_read_once(sdata, S6SY761_BOOT_STATUS, &status, 1);
+}
+
+/*
+ * The controller drops into an idle state between commands, and the first
+ * command after that only wakes it up: sec_ts retries every access.
+ */
+#define S6SY761_SPI_RETRIES	3
+
+static int s6sy761_spi_read(struct s6sy761_data *sdata, u8 reg, u8 *buf, u16 len)
+{
+	int i, ret;
+
+	for (i = 0; i < S6SY761_SPI_RETRIES; i++) {
+		ret = s6sy761_spi_read_once(sdata, reg, buf, len);
+		if (!ret)
+			break;
+		usleep_range(1000, 1100);
+	}
+	return ret;
 }
 
 static const struct s6sy761_bus s6sy761_spi_bus = {
@@ -399,11 +458,39 @@ static irqreturn_t s6sy761_irq_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static int s6sy761_sense_on(struct s6sy761_data *sdata)
+{
+	u8 status[S6SY761_TS_STATUS_SIZE];
+	int i, ret;
+
+	if (sdata->bus->bustype != BUS_SPI)
+		return sdata->bus->write(sdata, S6SY761_SENSE_ON, NULL, 0);
+
+	/*
+	 * Over SPI a command to an idle controller can be lost: check that it
+	 * is scanning (TS_STATUS system mode "touch") and send it again if not.
+	 */
+	for (i = 0; i < 3; i++) {
+		ret = sdata->bus->write(sdata, S6SY761_SENSE_ON, NULL, 0);
+		if (ret)
+			continue;
+		msleep(30);
+		ret = sdata->bus->read(sdata, S6SY761_TS_STATUS, status,
+				       sizeof(status));
+		if (!ret && status[1] == S6SY761_SYSTEM_MODE_TOUCH)
+			return 0;
+	}
+
+	dev_err(sdata->dev, "sensing did not start: %d, status %*ph\n", ret,
+		(int)sizeof(status), status);
+	return ret ? ret : -EIO;
+}
+
 static int s6sy761_input_open(struct input_dev *dev)
 {
 	struct s6sy761_data *sdata = input_get_drvdata(dev);
 
-	return sdata->bus->write(sdata, S6SY761_SENSE_ON, NULL, 0);
+	return s6sy761_sense_on(sdata);
 }
 
 static void s6sy761_input_close(struct input_dev *dev)
@@ -685,7 +772,7 @@ static int s6sy761_resume(struct device *dev)
 	if (!input_device_enabled(sdata->input))
 		return 0;
 
-	err = sdata->bus->write(sdata, S6SY761_SENSE_ON, NULL, 0);
+	err = s6sy761_sense_on(sdata);
 
 	return err;
 }
