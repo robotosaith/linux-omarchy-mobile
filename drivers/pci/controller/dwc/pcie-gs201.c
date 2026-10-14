@@ -1367,6 +1367,7 @@ static void gs201_pcie_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs201_pcie_of_match[] = {
+	{ .compatible = "google,gs101-pcie" },	/* same controller IP (0x984500) */
 	{ .compatible = "google,gs201-pcie" },
 	{ }
 };
