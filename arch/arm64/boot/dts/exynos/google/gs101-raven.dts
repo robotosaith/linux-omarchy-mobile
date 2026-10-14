@@ -62,6 +62,20 @@
 	status = "okay";
 };
 
+/*
+ * Display (DISPLAY-PLAN.md): gs-decon takes over the bootloader's pipeline
+ * from simpledrm. Its module stays blacklisted until D3 passes.
+ */
+&decon0 {
+	memory-region = <&display_pool>, <&cont_splash_mem>;
+	memory-region-names = "pool", "boot-framebuffer";
+	status = "okay";
+};
+
+&dsi0 {
+	status = "okay";
+};
+
 &cont_splash_mem {
 	reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 
@@ -194,6 +208,19 @@
 	};
 
 	reserved-memory {
+		/*
+		 * Scanout buffers for gs-decon: DPP0 takes 32-bit addresses and
+		 * the DPU SysMMU is bypassed (as on cheetah). Five 1440x3120
+		 * XRGB8888 buffers; reusable while unused.
+		 */
+		display_pool: display-pool {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x5c00000>;
+			alignment = <0x0 0x200000>;
+			alloc-ranges = <0x0 0x80000000 0x80000000>;
+		};
+
 		wifi_dma_pool: wifi-dma-pool {
 			compatible = "restricted-dma-pool";
 			size = <0x1000000>;
