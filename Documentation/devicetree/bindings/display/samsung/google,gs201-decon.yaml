@@ -19,7 +19,9 @@ description:
 
 properties:
   compatible:
-    const: google,gs201-decon
+    enum:
+      - google,gs101-decon
+      - google,gs201-decon
 
   reg:
     items:
