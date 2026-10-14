@@ -225,7 +225,11 @@
 			reusable;
 			size = <0x5c00000>;
 			alignment = <0x0 0x200000>;
-			alloc-ranges = <0x0 0x80000000 0x80000000>;
+			/*
+			 * Not in 3.75-4 GiB: DPP0's reads from 0xf2c00000+
+			 * hung silently (DISPLAY-PLAN.md D3e).
+			 */
+			alloc-ranges = <0x0 0xa0000000 0x40000000>;
 		};
 
 		wifi_dma_pool: wifi-dma-pool {
