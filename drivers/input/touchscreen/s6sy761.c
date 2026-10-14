@@ -255,7 +255,7 @@ static int s6sy761_spi_read(struct s6sy761_data *sdata, u8 reg, u8 *buf, u16 len
 
 	if (rx[0] != S6SY761_SPI_SYNC || rx[S6SY761_SPI_HDR] != reg ||
 	    rx[rlen] != s6sy761_spi_sum(rx, rlen)) {
-		dev_dbg(sdata->dev, "bad SPI reply to %#x: %*ph\n", reg, 8, rx);
+		dev_dbg(sdata->dev, "bad SPI reply to %#x: %*ph\n", reg, 16, rx);
 		return -EIO;
 	}
 
@@ -443,11 +443,16 @@ static int s6sy761_power_on(struct s6sy761_data *sdata)
 	if (ret)
 		return ret;
 
-	/* an optional active-high reset pulse, as Google's sec_ts does */
+	/*
+	 * Held in reset while unpowered; once the rails are up, release it,
+	 * pulse it and release it again, 10 ms apart, as Google's sec_ts does.
+	 */
 	if (sdata->reset) {
-		mdelay(10);
+		msleep(10);
+		gpiod_set_value_cansleep(sdata->reset, 0);
+		msleep(10);
 		gpiod_set_value_cansleep(sdata->reset, 1);
-		mdelay(10);
+		msleep(10);
 		gpiod_set_value_cansleep(sdata->reset, 0);
 	}
 
@@ -545,7 +550,7 @@ static int s6sy761_probe_common(struct s6sy761_data *sdata)
 
 	dev_set_drvdata(dev, sdata);
 
-	sdata->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
+	sdata->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(sdata->reset))
 		return dev_err_probe(dev, PTR_ERR(sdata->reset),
 				     "failed to get the reset GPIO\n");

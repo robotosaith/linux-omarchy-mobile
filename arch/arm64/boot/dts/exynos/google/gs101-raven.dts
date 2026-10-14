@@ -121,7 +121,8 @@
 /*
  * Touch: a Samsung S6SY79x on SPI 11 (Google's gs101-sec-touch.dtsi and
  * gs101-common-touch.dtsi): 10 MHz, mode 3, interrupt on gpa9-0, an
- * active-high reset on gpp26-0, DVDD on LDO25M and AVDD on LDO26M, which
+ * active-low reset on gpp26-0 (sec_ts drives it 0 until powered, then
+ * 1, 0, 1), DVDD on LDO25M and AVDD on LDO26M, which
  * gs101-raven-touch.dtsi pins to 1.8 V and 3.3 V.
  */
 &usi11 {
@@ -143,7 +144,7 @@
 		spi-cpha;
 		interrupt-parent = <&gpa9>;
 		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
-		reset-gpios = <&gpp26 0 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpp26 0 GPIO_ACTIVE_LOW>;
 		vdd-supply = <&{/firmware/power-management/pmic-1/regulators/ldo25m}>;
 		avdd-supply = <&{/firmware/power-management/pmic-1/regulators/ldo26m}>;
 		touchscreen-size-x = <1440>;
