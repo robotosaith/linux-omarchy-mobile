@@ -107,3 +107,13 @@
 &usbdrd31_phy {
 	/delete-property/ orientation-switch;
 };
+
+/* The Mali-G78 MP20 on its S2MPG10/11 rails, as postmarketOS describes it */
+&gpu {
+	mali-supply = <&{/firmware/power-management/pmic-2/regulators/buck2s}>;
+	buck8s-supply = <&{/firmware/power-management/pmic-2/regulators/buck8s}>;
+	ldo1s-supply = <&{/firmware/power-management/pmic-2/regulators/ldo1s}>;
+	buck7m-supply = <&{/firmware/power-management/pmic-1/regulators/buck7m}>;
+
+	status = "okay";
+};
