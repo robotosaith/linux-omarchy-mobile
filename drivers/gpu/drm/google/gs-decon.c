@@ -168,6 +168,10 @@ module_param(stage, int, 0444);
 MODULE_PARM_DESC(stage,
 		 "0 = log state only, 1 = count frame interrupts, 2 = KMS (default)");
 
+static bool keep_argb;
+module_param(keep_argb, bool, 0444);
+MODULE_PARM_DESC(keep_argb, "Debug: keep DPP0 at the bootloader's ARGB8888 format");
+
 static unsigned int max_refresh = 120;
 module_param(max_refresh, uint, 0444);
 MODULE_PARM_DESC(max_refresh, "Highest refresh rate to offer, 60 or 120 (default)");
@@ -508,7 +512,7 @@ static void gs_decon_set_scanout_locked(struct gs_decon *dc, dma_addr_t addr)
 	 * fourth byte is undefined. Switch with the first DRM buffer, in the
 	 * same shadow update, so the boot picture stays until then.
 	 */
-	if (!dc->xrgb && addr != dc->boot_fb.start) {
+	if (!keep_argb && !dc->xrgb && addr != dc->boot_fb.start) {
 		u32 ctrl = readl(dc->dma + RDMA_IN_CTRL_0);
 
 		ctrl &= ~IDMA_IMG_FORMAT;
