@@ -672,7 +672,11 @@ static int gs201_pcie_stage_clocks(struct gs201_pcie *gp)
 		dev_info(dev, "CMU_HSI2 option %#010x (automatic gating %s)\n",
 			 opt, opt & GS201_CMU_OPTION_AUTO_GATING ? "on" : "off");
 
-		if (trace) {
+		/*
+		 * The gate and Q-channel offsets are gs201's: on gs101 the same
+		 * range runs into a hole of CMU_HSI2 and the read aborts.
+		 */
+		if (trace && !of_device_is_compatible(dev->of_node, "google,gs101-pcie")) {
 			gs201_trace(gp, "about to read the CMU_HSI2 gate and PCIe Q-channel registers");
 			gs201_pcie_dump_cmu(gp, GS201_CMU_GATE_FIRST,
 					    GS201_CMU_GATE_LAST);
