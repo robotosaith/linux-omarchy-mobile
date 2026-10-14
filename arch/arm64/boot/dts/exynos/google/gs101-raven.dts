@@ -79,3 +79,17 @@
 
 	status = "okay";
 };
+
+/*
+ * First light: no Type-C driver runs in the initramfs, so don't make the
+ * controller wait for one. Plain USB 2 device mode on the USB 2 PHY, as on
+ * cheetah, until the MAX77759 TCPC and the USB-C role switch are brought up.
+ */
+&usbdrd31_dwc3 {
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	phys = <&usbdrd31_phy 0>;
+	phy-names = "usb2-phy";
+	/delete-property/ usb-role-switch;
+	/delete-property/ role-switch-default-mode;
+};
