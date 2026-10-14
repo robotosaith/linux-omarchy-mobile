@@ -1086,6 +1086,7 @@ static const struct panfrost_compatible gs101_data = {
 	.supply_names = gs101_supplies,
 	.num_pm_domains = 1, /* optional */
 	.pm_domain_names = NULL,
+	.gpu_quirks = BIT(GPU_QUIRK_FORCE_AARCH64_PGTABLE),
 };
 
 static const struct panfrost_compatible default_pm_rt_data = {
