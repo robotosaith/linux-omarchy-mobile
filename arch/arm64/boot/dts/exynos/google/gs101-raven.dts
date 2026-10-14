@@ -70,10 +70,17 @@
 	memory-region = <&display_pool>, <&cont_splash_mem>;
 	memory-region-names = "pool", "boot-framebuffer";
 	status = "okay";
+
+	/*
+	 * No S6E3HC3 panel driver yet, and gs-decon waits for a panel behind
+	 * the DSIM on its port: without the port it keeps the bootloader's
+	 * 60 Hz and never talks to the DSIM (D4 adds both back).
+	 */
+	/delete-node/ port;
 };
 
 &dsi0 {
-	status = "okay";
+	/delete-node/ port;
 };
 
 &cont_splash_mem {
