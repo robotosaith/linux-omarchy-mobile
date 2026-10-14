@@ -523,7 +523,7 @@ static int s6sy761_power_on(struct s6sy761_data *sdata)
 {
 	u8 buffer[S6SY761_EVENT_SIZE];
 	u8 event;
-	int ret;
+	int i, ret;
 
 	ret = regulator_bulk_enable(ARRAY_SIZE(sdata->regulators),
 				    sdata->regulators);
@@ -545,9 +545,19 @@ static int s6sy761_power_on(struct s6sy761_data *sdata)
 
 	msleep(140);
 
-	/* double check whether the touch is functional */
-	ret = sdata->bus->read(sdata, S6SY761_READ_ONE_EVENT, buffer,
-			       S6SY761_EVENT_SIZE);
+	/*
+	 * double check whether the touch is functional; after a cold power-up
+	 * the SPI controller can take longer to boot, so poll for its event
+	 * as sec_ts does
+	 */
+	for (i = 0; i < (sdata->bus->bustype == BUS_SPI ? 30 : 1); i++) {
+		if (i)
+			msleep(10);
+		ret = sdata->bus->read(sdata, S6SY761_READ_ONE_EVENT, buffer,
+				       S6SY761_EVENT_SIZE);
+		if (!ret && buffer[0])
+			break;
+	}
 	if (ret < 0)
 		return ret;
 
