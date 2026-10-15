@@ -36,6 +36,8 @@ struct exynos_pmu_context {
 	 */
 	raw_spinlock_t cpupm_lock;
 	unsigned long *in_cpuhp;
+	/* CPUs in a CPU PM (idle) section, for cluster power-down hints */
+	struct cpumask idle;
 	bool sys_insuspend;
 	bool sys_inreboot;
 };
@@ -229,6 +231,43 @@ EXPORT_SYMBOL_GPL(exynos_get_pmu_regmap_by_phandle);
  */
 #define CPU_INFORM_CLEAR	0
 #define CPU_INFORM_C2		1
+#define CPU_INFORM_CPD		2
+
+/*
+ * gs101 cluster power-down (CPD): the last CPU of a cluster to go idle hints
+ * CPD instead of C2, and ACPM's flexpmu then powers the cluster's non-CPU
+ * logic (DSU slice, L3, ...) off as Google's exynos-cpupm does. Bit n
+ * allows it for cluster n (cl0: CPUs 0-3, cl1: 4-5, cl2: 6-7); Google's DT
+ * allows it for the mid and big clusters (0x6). Off by default.
+ */
+static unsigned int gs101_cpd_clusters;
+module_param_named(cpd, gs101_cpd_clusters, uint, 0644);
+MODULE_PARM_DESC(cpd, "gs101: clusters allowed to power down when idle (bitmask)");
+
+static const struct cpumask *gs101_cluster_mask(unsigned int cpu,
+						unsigned int *cluster)
+{
+	static const unsigned long masks[] = { 0x0f, 0x30, 0xc0 };
+
+	*cluster = cpu < 4 ? 0 : cpu < 6 ? 1 : 2;
+	return to_cpumask(&masks[*cluster]);
+}
+
+/* With cpupm_lock held: the hint for @cpu entering idle. */
+static u32 gs101_cpu_inform_idle(unsigned int cpu)
+{
+	const struct cpumask *cl;
+	unsigned int cluster, other;
+
+	cl = gs101_cluster_mask(cpu, &cluster);
+	if (!(READ_ONCE(gs101_cpd_clusters) & BIT(cluster)))
+		return CPU_INFORM_C2;
+	for_each_cpu(other, cl)
+		if (other != cpu && cpu_online(other) &&
+		    !cpumask_test_cpu(other, &pmu_context->idle))
+			return CPU_INFORM_C2;
+	return CPU_INFORM_CPD;
+}
 
 /*
  * __gs101_cpu_pmu_ prefix functions are common code shared by CPU PM notifiers
@@ -264,6 +303,7 @@ static int gs101_cpu_pmu_online(void)
 	int cpu;
 
 	raw_spin_lock(&pmu_context->cpupm_lock);
+	cpumask_clear_cpu(smp_processor_id(), &pmu_context->idle);
 
 	if (pmu_context->sys_inreboot) {
 		raw_spin_unlock(&pmu_context->cpupm_lock);
@@ -296,15 +336,14 @@ static int gs101_cpuhp_pmu_online(unsigned int cpu)
 }
 
 /* Common function shared by both CPU hot plug and CPUIdle */
-static int __gs101_cpu_pmu_offline(unsigned int cpu)
+static int __gs101_cpu_pmu_offline(unsigned int cpu, u32 hint)
 	__must_hold(&pmu_context->cpupm_lock)
 {
 	unsigned int cpuhint = smp_processor_id();
 	u32 reg, mask;
 
 	/* set cpu inform hint */
-	regmap_write(pmu_context->pmureg, GS101_CPU_INFORM(cpuhint),
-		     CPU_INFORM_C2);
+	regmap_write(pmu_context->pmureg, GS101_CPU_INFORM(cpuhint), hint);
 
 	mask = BIT(cpu);
 	regmap_update_bits(pmu_context->pmuintrgen, GS101_GRP2_INTR_BID_ENABLE,
@@ -341,7 +380,8 @@ static int gs101_cpu_pmu_offline(void)
 		return NOTIFY_OK;
 	}
 
-	__gs101_cpu_pmu_offline(cpu);
+	cpumask_set_cpu(cpu, &pmu_context->idle);
+	__gs101_cpu_pmu_offline(cpu, gs101_cpu_inform_idle(cpu));
 	raw_spin_unlock(&pmu_context->cpupm_lock);
 
 	return NOTIFY_OK;
@@ -358,7 +398,7 @@ static int gs101_cpuhp_pmu_offline(unsigned int cpu)
 	 * ACPM the CPU entering hotplug should not enter C2 idle state.
 	 */
 	set_bit(cpu, pmu_context->in_cpuhp);
-	__gs101_cpu_pmu_offline(cpu);
+	__gs101_cpu_pmu_offline(cpu, CPU_INFORM_C2);
 
 	raw_spin_unlock_irqrestore(&pmu_context->cpupm_lock, flags);
 
