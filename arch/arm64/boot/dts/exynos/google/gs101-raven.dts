@@ -79,3 +79,31 @@
 
 	status = "okay";
 };
+
+/*
+ * First light: no Type-C driver runs in the initramfs, so don't make the
+ * controller wait for one. Plain USB 2 device mode on the USB 2 PHY, as on
+ * cheetah, until the MAX77759 TCPC and the USB-C role switch are brought up.
+ */
+&usbdrd31_dwc3 {
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	phys = <&usbdrd31_phy 0>;
+	phy-names = "usb2-phy";
+	/delete-property/ role-switch-default-mode;
+	/*
+	 * Keep usb-role-switch: in peripheral mode it registers nothing, but
+	 * without it dwc3 looks for an extcon through the PHY's port and waits
+	 * forever for the TCPC to provide one ("failed to get extcon").
+	 */
+};
+
+/*
+ * Without a TCPC driver nothing reports a cable orientation, and with
+ * orientation-switch set the PHY never forces VBUS/B-valid, so dwc3 stays
+ * "Disconnected". Without it the PHY forces both at init (exynos850-style
+ * UTMI init), as it would on a board with no Type-C port controller.
+ */
+&usbdrd31_phy {
+	/delete-property/ orientation-switch;
+};
