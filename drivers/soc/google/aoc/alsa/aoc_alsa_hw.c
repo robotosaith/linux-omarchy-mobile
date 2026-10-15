@@ -2359,6 +2359,9 @@ int aoc_audio_capture_eraser_enable(struct aoc_chip *chip, long enable)
 
 int aoc_hotword_tap_enable(struct aoc_chip *chip, long enable)
 {
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	return -EOPNOTSUPP;	/* not in gs101's AoC firmware */
+#else
 	if (chip->hotword_supported) {
 		int cmd_id, err = 0;
 
@@ -2375,6 +2378,7 @@ int aoc_hotword_tap_enable(struct aoc_chip *chip, long enable)
 		pr_err("WARN:hotword is not supported on this device\n");
 		return 0;
 	}
+#endif
 }
 
 int aoc_load_cca_module(struct aoc_chip *chip, long load)
@@ -2390,6 +2394,9 @@ int aoc_load_cca_module(struct aoc_chip *chip, long load)
 
 int aoc_enable_cca_on_voip(struct aoc_chip *chip, long enable)
 {
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	return -EOPNOTSUPP;	/* not in gs101's AoC firmware */
+#else
 	int cmd_id, err = 0;
 
 	cmd_id = (enable == 1) ?
@@ -2398,6 +2405,7 @@ int aoc_enable_cca_on_voip(struct aoc_chip *chip, long enable)
 	err = aoc_audio_control_simple_cmd(CMD_OUTPUT_CHANNEL, cmd_id, chip);
 
 	return err;
+#endif
 }
 
 int aoc_lvm_enable_get(struct aoc_chip *chip, long *enable)
@@ -4294,6 +4302,9 @@ int aoc_audio_set_two_one(struct aoc_chip *chip, int enable)
 
 int aoc_audio_set_chre_src_pdm_gain(struct aoc_chip *chip, int gain)
 {
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	return -EOPNOTSUPP;	/* not in gs101's AoC firmware */
+#else
 	if (chip->chre_supported) {
 		int err;
 		struct CMD_AUDIO_INPUT_SET_CHRE_SRC_PDM_GAIN cmd;
@@ -4312,10 +4323,14 @@ int aoc_audio_set_chre_src_pdm_gain(struct aoc_chip *chip, int gain)
 		pr_err("WARN: setting CHRE PDM gain is not supported\n");
 		return 0;
 	}
+#endif
 }
 
 int aoc_audio_set_chre_src_aec_gain(struct aoc_chip *chip, int gain)
 {
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	return -EOPNOTSUPP;	/* not in gs101's AoC firmware */
+#else
 	if (chip->chre_supported) {
 		int err;
 		struct CMD_AUDIO_INPUT_SET_CHRE_SRC_AEC_GAIN cmd;
@@ -4334,10 +4349,14 @@ int aoc_audio_set_chre_src_aec_gain(struct aoc_chip *chip, int gain)
 		pr_err("WARN: setting CHRE AEC gain is not supported\n");
 		return 0;
 	}
+#endif
 }
 
 int aoc_audio_set_chre_src_aec_timeout(struct aoc_chip *chip, int timeout)
 {
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	return -EOPNOTSUPP;	/* not in gs101's AoC firmware */
+#else
 	if (chip->chre_supported) {
 		int err;
 		struct CMD_AUDIO_INPUT_SET_CHRE_SRC_AEC_TIMEOUT cmd;
@@ -4356,6 +4375,7 @@ int aoc_audio_set_chre_src_aec_timeout(struct aoc_chip *chip, int timeout)
 		pr_err("WARN: setting CHRE AEC gain is not supported\n");
 		return 0;
 	}
+#endif
 }
 
 #if !(IS_ENABLED(CONFIG_SOC_GS101) || IS_ENABLED(CONFIG_SOC_GS201))

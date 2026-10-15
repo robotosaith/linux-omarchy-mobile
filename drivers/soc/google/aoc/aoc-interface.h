@@ -9,5 +9,9 @@
  * published by the Free Software Foundation.
  */
 
+#if IS_ENABLED(CONFIG_GOOGLE_AOC_GS101)
+#include "aoc-interface-gs101.h"
+#else
 #include "aoc-interface-gs201.h"
+#endif
 
