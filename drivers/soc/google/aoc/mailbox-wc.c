@@ -61,6 +61,8 @@ struct wc_mbox_prvdata {
 
 static const struct of_device_id wc_mbox_match[] = {
 	{
+		.compatible = "google,gs101-aoc-mbox",
+	}, {
 		.compatible = "google,gs201-aoc-mbox",
 	},
 	{},
