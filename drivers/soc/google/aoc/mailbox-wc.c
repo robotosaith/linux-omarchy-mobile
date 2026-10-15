@@ -11,6 +11,7 @@
 
 #define pr_fmt(fmt) "wc-mbox: " fmt
 
+#include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -299,7 +300,16 @@ static int wc_mbox_probe(struct platform_device *pdev)
 	u32 non_wake_mask;
 	int interrupt;
 	int ret;
+	struct clk *pclk;
 	int i;
+
+	/*
+	 * gs101: the AP-AoC mailbox's APB clock is off at hand-off. gs201
+	 * names none.
+	 */
+	pclk = devm_clk_get_optional_enabled(dev, NULL);
+	if (IS_ERR(pclk))
+		return dev_err_probe(dev, PTR_ERR(pclk), "no mailbox clock\n");
 
 	/* Check for device tree properties */
 	interrupt = platform_get_irq(pdev, 0);
