@@ -525,6 +525,10 @@ static ssize_t aoc_tzpc_write(struct file *file, const char __user *ubuf,
  */
 #define PMU_AOC_CUSTOM_OUT		0x3ac0
 #define PMU_AOC_CUSTOM_IN		0x3ac4
+/* gs101 flexpmu_cal_local_gs101.h: blkpwr_aoc and BUS0 */
+#define PMU_AOC_CONFIGURATION		0x1880
+#define PMU_AOC_STATUS			0x1884
+#define PMU_BUS0_STATUS			0x1a04
 
 static int aoc_pmu_show(struct seq_file *s, void *unused)
 {
@@ -540,9 +544,56 @@ static int aoc_pmu_show(struct seq_file *s, void *unused)
 	if (ret)
 		return ret;
 	seq_printf(s, "pmu aoc custom_out %#x custom_in %#x\n", out, in);
+	if (!regmap_read(pmu, PMU_AOC_CONFIGURATION, &out) &&
+	    !regmap_read(pmu, PMU_AOC_STATUS, &in))
+		seq_printf(s, "pmu aoc configuration %#x status %#x\n", out, in);
+	if (!regmap_read(pmu, PMU_BUS0_STATUS, &in))
+		seq_printf(s, "pmu bus0 status %#x\n", in);
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(aoc_pmu);
+
+/*
+ * CMU_BUS0's Q-channels for the AP's ports into BLK_AOC (P: SFR access) and
+ * the GSA (reference: that path works). No mainline driver owns CMU_BUS0.
+ * Each read is logged before the next, so an abort names its register.
+ */
+#define CMU_BUS0_BASE			0x1e800000
+#define CMU_BUS0_SIZE			0x8000
+static const struct {
+	const char *name;
+	u32 off;
+} aoc_bus0_regs[] = {
+	{ "QCH_CON_LHS_AXI_P_GSA", 0x3060 },
+	{ "DBG_NFO_QCH_CON_LHS_AXI_P_GSA", 0x7060 },
+	{ "QCH_CON_LHS_AXI_P_AOC", 0x305c },
+	{ "DBG_NFO_QCH_CON_LHS_AXI_P_AOC", 0x705c },
+	{ "QCH_CON_LHM_AXI_D_AOC", 0x304c },
+	{ "DBG_NFO_QCH_CON_LHM_AXI_D_AOC", 0x704c },
+	{ "DMYQCH_CON_PPC_CYCLE_AOC", 0x3004 },
+};
+
+static int aoc_bus0_show(struct seq_file *s, void *unused)
+{
+	struct aoc_boot *ab = s->private;
+	void __iomem *base;
+	unsigned int i;
+	u32 val;
+
+	base = ioremap(CMU_BUS0_BASE, CMU_BUS0_SIZE);
+	if (!base)
+		return -ENOMEM;
+	for (i = 0; i < ARRAY_SIZE(aoc_bus0_regs); i++) {
+		dev_info(ab->dev, "bus0: reading %s (+%#x)\n",
+			 aoc_bus0_regs[i].name, aoc_bus0_regs[i].off);
+		val = readl(base + aoc_bus0_regs[i].off);
+		dev_info(ab->dev, "bus0: %s = %#x\n", aoc_bus0_regs[i].name, val);
+		seq_printf(s, "%s %#x\n", aoc_bus0_regs[i].name, val);
+	}
+	iounmap(base);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(aoc_bus0);
 
 static const struct file_operations aoc_tzpc_fops = {
 	.open = simple_open,
@@ -1102,6 +1153,7 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	if (ab->tzpc_smc)
 		debugfs_create_file("tzpc", 0200, ab->debugfs, ab, &aoc_tzpc_fops);
 	debugfs_create_file("pmu", 0400, ab->debugfs, ab, &aoc_pmu_fops);
+	debugfs_create_file("bus0", 0400, ab->debugfs, ab, &aoc_bus0_fops);
 	debugfs_create_file("load", 0200, ab->debugfs, ab, &aoc_load_fops);
 	debugfs_create_file("start", 0200, ab->debugfs, ab, &aoc_start_fops);
 	debugfs_create_file("control", 0400, ab->debugfs, ab, &aoc_control_fops);
