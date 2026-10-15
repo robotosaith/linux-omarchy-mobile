@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Google gs201 (Tensor G2) PCIe Gen4 PHY driver
+ * Google gs101 (Tensor) and gs201 (Tensor G2) PCIe Gen4 PHY driver
  *
  * The register sequence is Samsung's "CAL ver 210802" for gs201, taken from
  * the driver Google builds for gs201 (pcie-exynos-gs201-rc-cal.c and
- * pcie-exynos-rc.c in google-modules/soc/gs/drivers/pci/controller/dwc-whi).
+ * pcie-exynos-rc.c in google-modules/soc/gs/drivers/pci/controller/dwc-whi),
+ * and Samsung's gs101 sequence from pcie-exynos-gs101-rc-cal.c in the same
+ * tree. Both SoCs share the controller IP (ip-ver 0x984500); the PHYs differ
+ * in their reference clock and their TX/RX tuning.
  * Most PMA registers have no public names, so the tables keep Samsung's raw
  * offsets and values.
  *
@@ -20,6 +23,7 @@
 #include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/soc/samsung/exynos-pmu.h>
 
@@ -182,8 +186,89 @@ static const struct gs201_pcie_phy_reg gs201_pma_reset_vals[] = {
 	{ 0x0d8, 0x28 }, { 0x1054, 0x77 },
 };
 
+/*
+ * gs101 (Samsung's gs101 sequence): no 38.4 MHz input clock block, its own
+ * TX pre-emphasis and RX tuning, no Auto FBB or DFE writes.
+ */
+static const struct gs201_pcie_phy_reg gs101_pma_common[] = {
+	{ 0x018, 0x50 }, { 0x048, 0x33 }, { 0x068, 0x01 }, { 0x070, 0x12 },
+	{ 0x08c, 0x00 }, { 0x090, 0x21 }, { 0x0b0, 0x14 }, { 0x0b8, 0x50 },
+	{ 0x0e0, 0x51 }, { 0x100, 0x00 }, { 0x104, 0x80 }, { 0x140, 0x38 },
+	{ 0x180, 0xa4 },
+	{ 0x188, 0x03 },	/* LCPLL 100 MHz, no divider */
+	{ 0x2a8, 0x38 }, { 0x2e4, 0x12 },
+	/* PMA enable, aggregation (non-bifurcated) mode */
+	{ 0x400, 0x80 }, { 0x408, 0x20 }, { 0x550, 0x00 }, { 0x5a8, 0x00 },
+	{ 0x5ec, 0xff },
+	/* PCIe type: RC */
+	{ 0x458, 0x02 },	/* 100 MHz clock on */
+	{ 0x5b0, 0x34 },	/* differential REFCLK source control */
+	{ 0x450, 0x20 },	/* extra delay when entering L1.2 */
+};
+
+static const struct gs201_pcie_phy_reg gs101_pma_lane[] = {
+	{ 0x82c, 0x08 }, { 0x830, 0x24 }, { 0x878, 0x80 }, { 0x894, 0x40 },
+	{ 0x8c0, 0x00 }, { 0x8f4, 0x30 }, { 0x908, 0x05 }, { 0x90c, 0xe0 },
+	{ 0x914, 0xd4 }, { 0x91c, 0xd3 }, { 0x920, 0xce }, { 0x924, 0x01 },
+	{ 0x928, 0x35 }, { 0x92c, 0xba }, { 0x930, 0x41 }, { 0x934, 0x15 },
+	{ 0x938, 0x13 }, { 0x93c, 0x4e }, { 0x948, 0x43 }, { 0x94c, 0xfc },
+	{ 0x954, 0x10 }, { 0x958, 0x69 }, { 0x964, 0x40 }, { 0x9b4, 0xf6 },
+	{ 0x9c0, 0x2d }, { 0x9c4, 0xb7 }, { 0x9cc, 0x3c }, { 0x9dc, 0x7e },
+	{ 0xa40, 0x02 }, { 0xa70, 0x26 }, { 0xa74, 0x00 },
+	{ 0xb40, 0x06 }, { 0xb44, 0x06 }, { 0xb48, 0x04 }, { 0xb4c, 0x03 },
+	{ 0xb50, 0x03 }, { 0xb54, 0x03 }, { 0xb58, 0x03 }, { 0xb5c, 0x03 },
+	{ 0xc10, 0x1b }, { 0xc44, 0x10 }, { 0xc48, 0x10 }, { 0xc4c, 0x10 },
+	{ 0xc50, 0x10 }, { 0xc54, 0x02 }, { 0xc58, 0x02 }, { 0xc5c, 0x02 },
+	{ 0xc60, 0x02 }, { 0xc6c, 0x02 }, { 0xc70, 0x02 }, { 0xca8, 0xe7 },
+	{ 0xcac, 0x00 }, { 0xcb0, 0x0e }, { 0xccc, 0x1c }, { 0xcd4, 0x05 },
+	{ 0xcd8, 0x77 }, { 0xcdc, 0x7a }, { 0xdb4, 0x2f },
+	/* TX termination resistor */
+	{ 0x9cc, 0x00 }, { 0xcd8, 0xff }, { 0xcdc, 0x6e },
+	{ 0x82c, 0x0f }, { 0x830, 0x60 }, { 0x834, 0x7e },
+	/* TX pre-emphasis: pre, [7:4] Gen4, post */
+	{ 0x824, 0x10 }, { 0x82c, 0x4f }, { 0x818, 0x1f }, { 0x820, 0x00 },
+	/* RX tuning */
+	{ 0x928, 0x3d }, { 0x920, 0xca }, { 0xa08, 0x2f }, { 0x92c, 0xb8 },
+	{ 0x914, 0xf4 }, { 0x96c, 0x55 }, { 0x988, 0x78 }, { 0x934, 0x17 },
+	{ 0x93c, 0x4c }, { 0x994, 0x3b }, { 0x948, 0x73 }, { 0xb9c, 0x3f },
+	{ 0x9c8, 0x20 }, { 0x9c4, 0xff }, { 0xc08, 0x05 }, { 0xc3c, 0x04 },
+	{ 0xc40, 0x04 },
+};
+
+struct gs201_pcie_phy_data {
+	const struct gs201_pcie_phy_reg *pma_common;
+	size_t n_pma_common;
+	const struct gs201_pcie_phy_reg *pma_lane;
+	size_t n_pma_lane;
+	const struct gs201_pcie_phy_reg *pma_lane_clk;	/* optional */
+	size_t n_pma_lane_clk;
+	u32 erio_clk_gate;		/* PCS 0x008 bits set for L1.2 */
+	bool pll_bias_off_delay;	/* PCS 0x190 */
+};
+
+static const struct gs201_pcie_phy_data gs201_phy_data = {
+	.pma_common = gs201_pma_common,
+	.n_pma_common = ARRAY_SIZE(gs201_pma_common),
+	.pma_lane = gs201_pma_lane,
+	.n_pma_lane = ARRAY_SIZE(gs201_pma_lane),
+	.pma_lane_clk = gs201_pma_lane_clk,
+	.n_pma_lane_clk = ARRAY_SIZE(gs201_pma_lane_clk),
+	.erio_clk_gate = GS201_PCS_ERIO_CLK_GATE_MASK,
+	.pll_bias_off_delay = true,
+};
+
+static const struct gs201_pcie_phy_data gs101_phy_data = {
+	.pma_common = gs101_pma_common,
+	.n_pma_common = ARRAY_SIZE(gs101_pma_common),
+	.pma_lane = gs101_pma_lane,
+	.n_pma_lane = ARRAY_SIZE(gs101_pma_lane),
+	.erio_clk_gate = BIT(4),
+	.pll_bias_off_delay = false,
+};
+
 struct gs201_pcie_phy {
 	struct device *dev;
+	const struct gs201_pcie_phy_data *data;
 	void __iomem *pma;
 	void __iomem *pcs;
 	void __iomem *rst;
@@ -329,18 +414,18 @@ static void gs201_pcie_phy_config(struct gs201_pcie_phy *gp, unsigned int lanes)
 
 	gs201_phy_trace(gp, "about to write the PMA tables (common, %u lane(s), lane clocks)",
 			lanes);
-	gs201_pcie_phy_write_table(gp->pma, gs201_pma_common,
-				   ARRAY_SIZE(gs201_pma_common));
+	gs201_pcie_phy_write_table(gp->pma, gp->data->pma_common,
+				   gp->data->n_pma_common);
 
 	for (lane = 0; lane < lanes; lane++)
 		gs201_pcie_phy_write_table(gp->pma + lane * GS201_PMA_LANE_STRIDE,
-					   gs201_pma_lane,
-					   ARRAY_SIZE(gs201_pma_lane));
+					   gp->data->pma_lane,
+					   gp->data->n_pma_lane);
 
-	for (lane = 0; lane < GS201_PHY_MAX_LANES; lane++)
+	for (lane = 0; gp->data->pma_lane_clk && lane < GS201_PHY_MAX_LANES; lane++)
 		gs201_pcie_phy_write_table(gp->pma + lane * GS201_PMA_LANE_STRIDE,
-					   gs201_pma_lane_clk,
-					   ARRAY_SIZE(gs201_pma_lane_clk));
+					   gp->data->pma_lane_clk,
+					   gp->data->n_pma_lane_clk);
 
 	gs201_phy_trace(gp, "about to write PCS 0x004 0x154 0x150 0x170 0x008 0x190");
 	for (lane = 0; lane < lanes; lane++) {
@@ -357,10 +442,11 @@ static void gs201_pcie_phy_config(struct gs201_pcie_phy *gp, unsigned int lanes)
 		gs201_pcie_phy_rmw(gp->pcs + lane * GS201_PCS_LANE_STRIDE +
 				   GS201_PCS_CLK_CTRL,
 				   GS201_PCS_ERIO_CLK_GATE_MASK,
-				   GS201_PCS_ERIO_CLK_GATE_MASK);
+				   gp->data->erio_clk_gate);
 
 	/* PLL and bias enable off delay */
-	writel(0x100b0808, gp->pcs + GS201_PCS_PLL_BIAS_OFF_DELAY);
+	if (gp->data->pll_bias_off_delay)
+		writel(0x100b0808, gp->pcs + GS201_PCS_PLL_BIAS_OFF_DELAY);
 
 	gs201_phy_trace(gp, "about to release CMN_RST and PORT_RST");
 	writel(1, gp->rst + GS201_PHY_RST_CMN);
@@ -570,6 +656,9 @@ static int gs201_pcie_phy_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	gp->dev = dev;
+	gp->data = device_get_match_data(dev);
+	if (!gp->data)
+		return -ENODEV;
 
 	/* Only mappings here: the PHY is not touched until phy_init() */
 	gp->pma = devm_platform_ioremap_resource_byname(pdev, "pma");
@@ -616,7 +705,8 @@ static int gs201_pcie_phy_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs201_pcie_phy_of_match[] = {
-	{ .compatible = "google,gs201-pcie-phy" },
+	{ .compatible = "google,gs101-pcie-phy", .data = &gs101_phy_data },
+	{ .compatible = "google,gs201-pcie-phy", .data = &gs201_phy_data },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, gs201_pcie_phy_of_match);
