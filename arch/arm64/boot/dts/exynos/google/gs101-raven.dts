@@ -58,6 +58,15 @@
 	};
 };
 
+/* AoC bring-up: Trusty and the GSA mailbox */
+&trusty {
+	status = "okay";
+};
+
+&gsa {
+	status = "okay";
+};
+
 &cont_splash_mem {
 	reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 
