@@ -78,22 +78,14 @@
 	memory-region = <&display_pool>, <&cont_splash_mem>;
 	memory-region-names = "pool", "boot-framebuffer";
 	status = "okay";
-
-	/*
-	 * No S6E3HC3 panel driver yet, and gs-decon waits for a panel behind
-	 * the DSIM on its port: without the port it keeps the bootloader's
-	 * 60 Hz and never talks to the DSIM (D4 adds both back).
-	 */
-	/delete-node/ port;
 };
 
 &dsi0 {
-	/* simpledrm scans out: mask DECON's trigger while the display is off */
+	/* mask DECON's trigger while the panel's display is off */
 	google,decon = <&decon0>;
 	status = "okay";
-	/delete-node/ port;
 
-	/* brightness and display on/off only; the bootloader runs it */
+	/* brightness, display on/off and 60/120 Hz; the bootloader runs it */
 	panel@0 {
 		compatible = "samsung,s6e3hc3";
 		reg = <0>;
