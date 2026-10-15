@@ -21,7 +21,9 @@ allOf:
 
 properties:
   compatible:
-    const: google,gs201-dsim
+    enum:
+      - google,gs101-dsim
+      - google,gs201-dsim
 
   reg:
     minItems: 1
@@ -43,6 +45,18 @@ properties:
   power-domains:
     maxItems: 1
 
+  google,decon:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      The DECON feeding this DSIM, when no KMS driver runs it (the
+      bootloader's framebuffer is scanned out). Its hardware trigger is
+      masked while the panel's display is off.
+
+  port:
+    $ref: /schemas/graph.yaml#/properties/port
+    description:
+      Input from the DECON.
+
 required:
   - compatible
   - reg
@@ -62,6 +76,12 @@ examples:
         interrupts = <GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>;
         #address-cells = <1>;
         #size-cells = <0>;
+
+        port {
+            dsi0_in: endpoint {
+                remote-endpoint = <&decon0_out>;
+            };
+        };
 
         panel@0 {
             compatible = "samsung,s6e3hc4";
