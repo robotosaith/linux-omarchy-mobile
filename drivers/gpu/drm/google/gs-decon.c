@@ -1491,6 +1491,15 @@ static int gs_decon_probe(struct platform_device *pdev)
 						  gs_decon_driver.name);
 	if (ret)
 		goto err_irqs;
+	/*
+	 * and keep it: on raven simpledrm probed 30 ms after us, found the
+	 * aperture free and stayed as a second, phantom output. Holding the
+	 * range makes its own acquire fail with -EBUSY.
+	 */
+	ret = devm_aperture_acquire_for_platform_device(pdev, dc->boot_fb.start,
+							resource_size(&dc->boot_fb));
+	if (ret)
+		goto err_irqs;
 
 	dc->kms = true;
 	ret = drm_dev_register(&dc->drm, 0);
