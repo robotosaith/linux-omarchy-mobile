@@ -72,3 +72,75 @@
 
 	status = "okay";
 };
+
+/*
+ * GNSS: Broadcom BCM4775x on PERIC0 USI5 SPI (Google's spi5), 26 MHz, mode 3,
+ * as stock's raven device tree describes it (bcm4775@0). The chip select is
+ * driven as a GPIO, as on cheetah. Its supplies are S2MPG11 LDO9S-LDO11S
+ * (stock: L9S_GNSS_CORE, L10S_GNSS_RF, L11S_GNSS_AUX). The stock lhd/gpsd
+ * daemons drive it through /dev/ttyBCM. Disabled until the gnss-test
+ * overlay.
+ */
+&usi5 {
+	samsung,mode = <USI_MODE_SPI>;
+};
+
+&spi_5 {
+	pinctrl-0 = <&spi5_bus &gnss_spi_cs>;
+	cs-gpios = <&gpp10 3 GPIO_ACTIVE_LOW>;
+	num-cs = <1>;
+
+	gnss@0 {
+		compatible = "brcm,bcm4775-gnss";
+		reg = <0>;
+		spi-max-frequency = <26000000>;
+		spi-cpol;
+		spi-cpha;
+		interrupts-extended = <&gpa6 4 IRQ_TYPE_LEVEL_HIGH>;
+		/* Raw levels: lhd writes 1 to the nstandby attribute to run it */
+		nstandby-gpios = <&gpp0 2 GPIO_ACTIVE_HIGH>;
+		mcu-req-gpios = <&gpp1 1 GPIO_ACTIVE_HIGH>;
+		mcu-resp-gpios = <&gpp0 0 GPIO_ACTIVE_HIGH>;
+		host-req-gpios = <&gpa6 4 GPIO_ACTIVE_HIGH>;
+		vddcore-supply = <&{/firmware/power-management/pmic-2/regulators/ldo9s}>;
+		vddrf-supply = <&{/firmware/power-management/pmic-2/regulators/ldo10s}>;
+		vddaux-supply = <&{/firmware/power-management/pmic-2/regulators/ldo11s}>;
+		pinctrl-0 = <&gnss_nstandby &gnss_mcu_resp &gnss_mcu_req
+			     &gnss_host_req>;
+		pinctrl-names = "default";
+	};
+};
+
+&pinctrl_far_alive {
+	gnss_host_req: gnss-host-req-pins {
+		samsung,pins = "gpa6-4";
+		samsung,pin-function = <GS101_PIN_FUNC_EINT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
+
+&pinctrl_peric0 {
+	gnss_mcu_resp: gnss-mcu-resp-pins {
+		samsung,pins = "gpp0-0";
+		samsung,pin-function = <GS101_PIN_FUNC_INPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_DOWN>;
+	};
+
+	gnss_nstandby: gnss-nstandby-pins {
+		samsung,pins = "gpp0-2";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+
+	gnss_mcu_req: gnss-mcu-req-pins {
+		samsung,pins = "gpp1-1";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+
+	gnss_spi_cs: gnss-spi-cs-pins {
+		samsung,pins = "gpp10-3";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
