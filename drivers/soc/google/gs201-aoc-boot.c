@@ -467,6 +467,24 @@ static int aoc_blk_show(struct seq_file *s, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(aoc_blk);
 
+/*
+ * The AoC S2MPU's CTRL0 alone. On gs101 it is reachable only once ACPM has
+ * restored AOC_TZPC at a BLK_AOC power-up, so a first probe reads this one
+ * register and nothing else.
+ */
+static int aoc_s2mpu_show(struct seq_file *s, void *unused)
+{
+	struct aoc_boot *ab = s->private;
+
+	if (!aoc_blk_on(ab)) {
+		seq_puts(s, "BLK_AOC is off (no acknowledge): not read\n");
+		return 0;
+	}
+	seq_printf(s, "aoc s2mpu CTRL0 %#x\n", readl(ab->s2mpu + AOC_S2MPU_CTRL0));
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(aoc_s2mpu);
+
 static int aoc_pcu_show(struct seq_file *s, void *unused)
 {
 	struct aoc_boot *ab = s->private;
@@ -1014,6 +1032,7 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	debugfs_create_file("info", 0400, ab->debugfs, ab, &aoc_info_fops);
 	debugfs_create_file("power", 0200, ab->debugfs, ab, &aoc_power_fops);
 	debugfs_create_file("blk", 0400, ab->debugfs, ab, &aoc_blk_fops);
+	debugfs_create_file("s2mpu", 0400, ab->debugfs, ab, &aoc_s2mpu_fops);
 	debugfs_create_file("load", 0200, ab->debugfs, ab, &aoc_load_fops);
 	debugfs_create_file("start", 0200, ab->debugfs, ab, &aoc_start_fops);
 	debugfs_create_file("control", 0400, ab->debugfs, ab, &aoc_control_fops);
