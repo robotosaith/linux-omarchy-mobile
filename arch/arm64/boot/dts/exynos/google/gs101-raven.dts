@@ -80,7 +80,14 @@
 };
 
 &dsi0 {
+	status = "okay";
 	/delete-node/ port;
+
+	/* brightness and display on/off only; the bootloader runs it */
+	panel@0 {
+		compatible = "samsung,s6e3hc3";
+		reg = <0>;
+	};
 };
 
 &cont_splash_mem {
