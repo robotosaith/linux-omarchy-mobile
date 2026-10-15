@@ -1155,6 +1155,8 @@ static void aoc_platform_shutdown(struct platform_device *dev);
 
 static const struct of_device_id aoc_match[] = {
 	{
+		.compatible = "google,gs101-aoc",
+	}, {
 		.compatible = "google,gs201-aoc",
 	},
 	{},
