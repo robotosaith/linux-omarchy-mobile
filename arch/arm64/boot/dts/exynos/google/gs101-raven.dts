@@ -57,6 +57,18 @@
 	status = "okay";
 };
 
+/*
+ * The AoC's sensor rails, as on stock raven: the AoC driver power-cycles
+ * and enables them at probe. The microphones are on ldo20m, always on.
+ */
+&aoc {
+	google,board-id = <0x20202>;
+	google,board-rev = <0x10000>;
+	sensor_1v8-supply = <&{/firmware/power-management/pmic-2/regulators/ldo7s}>;
+	sensor_3v3-supply = <&{/firmware/power-management/pmic-2/regulators/ldo6s}>;
+	sensor_power_list = "sensor_1v8", "sensor_3v3";
+};
+
 &cont_splash_mem {
 	reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 
