@@ -167,6 +167,15 @@
 	};
 };
 
+/* AoC bring-up R1 (AUDIO-PLAN.md): Trusty and the GSA mailbox */
+&trusty {
+	status = "okay";
+};
+
+&gsa {
+	status = "okay";
+};
+
 &cont_splash_mem {
 	reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 
