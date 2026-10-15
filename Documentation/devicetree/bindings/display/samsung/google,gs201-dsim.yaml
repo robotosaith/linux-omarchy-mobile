@@ -45,6 +45,13 @@ properties:
   power-domains:
     maxItems: 1
 
+  google,decon:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      The DECON feeding this DSIM, when no KMS driver runs it (the
+      bootloader's framebuffer is scanned out). Its hardware trigger is
+      masked while the panel's display is off.
+
   port:
     $ref: /schemas/graph.yaml#/properties/port
     description:
