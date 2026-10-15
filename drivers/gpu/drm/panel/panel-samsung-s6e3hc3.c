@@ -10,7 +10,8 @@
  * the reset line or the rails, and sends nothing until the brightness or the
  * backlight power state changes. A blanked backlight (bl_power) turns the
  * display off, which stops the OLED emitting but keeps the panel out of
- * sleep with its registers intact; unblanking turns it back on.
+ * sleep with its registers intact; unblanking turns it back on. Level 0
+ * is the dimmest level, not off.
  */
 
 #include <linux/backlight.h>
@@ -44,7 +45,13 @@ static int s6e3hc3_bl_update_status(struct backlight_device *bl)
 
 	guard(mutex)(&ctx->lock);
 
-	if (backlight_is_blank(bl) || !brightness) {
+	/*
+	 * Only a blanked backlight turns the display off. Level 0 is the
+	 * dimmest level: Omarchy darkens with 0 before locking and puts the
+	 * level back afterwards, and a level left at 0 must not leave the
+	 * panel dark with nothing to wake it.
+	 */
+	if (backlight_is_blank(bl)) {
 		if (!ctx->display_off) {
 			mipi_dsi_dcs_set_display_off_multi(&dsi_ctx);
 			/* as the vendor driver: 20 ms after display off */
@@ -102,6 +109,11 @@ static int s6e3hc3_probe(struct mipi_dsi_device *dsi)
 
 	ctx->dsi = dsi;
 	mipi_dsi_set_drvdata(dsi, ctx);
+	/*
+	 * Unknown after a module reload: the first unblanked update sends
+	 * display on, which is harmless on a lit panel.
+	 */
+	ctx->display_off = true;
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
