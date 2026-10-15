@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
+# gs101 (Pixel 6): the vendor code's own SoC guards (CONFIG_SOC_GS101)
+ccflags-$(CONFIG_GOOGLE_AOC_GS101) += -DCONFIG_SOC_GS101=1
 # Google's AoC core driver (google-modules/aoc, aoc_ipc), gs201 port
 ccflags-y += -I$(src)
 

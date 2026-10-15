@@ -57,6 +57,15 @@ config GS201_AOC_MBOX
 	  The doorbell and shared-register mailboxes between the AP and the
 	  AoC (Google's whitechapel mailbox driver).
 
+config GOOGLE_AOC_GS101
+	bool "The AoC firmware interface of gs101 (Pixel 6)"
+	depends on GS201_AOC
+	help
+	  Build the AoC drivers against gs101's firmware interface
+	  (aoc-interface-gs101.h) instead of gs201's. gs101's firmware lacks
+	  some later commands (EP_SETUP2, MEL, ...); their controls are left
+	  out.
+
 config GS201_AOC
 	tristate "gs201 AoC core (Google's driver)"
 	depends on GOOGLE_GSA && GS201_AOC_SYSMMU && GS201_AOC_MBOX
