@@ -68,10 +68,12 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <linux/random.h>
+#include <linux/regmap.h>
 #include <linux/seq_file.h>
 #include <linux/sizes.h>
 #include <linux/soc/google/gs201-aoc-sysmmu.h>
 #include <linux/soc/google/gsa.h>
+#include <linux/soc/samsung/exynos-pmu.h>
 #include <linux/uaccess.h>
 
 #define AOC_REQ_ACK			0x40
@@ -515,6 +517,32 @@ static ssize_t aoc_tzpc_write(struct file *file, const char __user *ubuf,
 		 mode ? "restore" : "save", ab->tzpc_smc, res.a0);
 	return res.a0 ? -EIO : count;
 }
+
+/*
+ * The AoC's handshake words in PMU_ALIVE, which Google's gs101 aoc.c prints
+ * when an AoC reset times out. Read through the kernel's PMU regmap, never
+ * from user space (AGENTS.md).
+ */
+#define PMU_AOC_CUSTOM_OUT		0x3ac0
+#define PMU_AOC_CUSTOM_IN		0x3ac4
+
+static int aoc_pmu_show(struct seq_file *s, void *unused)
+{
+	struct regmap *pmu = exynos_get_pmu_regmap();
+	u32 out = 0, in = 0;
+	int ret;
+
+	if (IS_ERR(pmu))
+		return PTR_ERR(pmu);
+	ret = regmap_read(pmu, PMU_AOC_CUSTOM_OUT, &out);
+	if (!ret)
+		ret = regmap_read(pmu, PMU_AOC_CUSTOM_IN, &in);
+	if (ret)
+		return ret;
+	seq_printf(s, "pmu aoc custom_out %#x custom_in %#x\n", out, in);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(aoc_pmu);
 
 static const struct file_operations aoc_tzpc_fops = {
 	.open = simple_open,
@@ -1073,6 +1101,7 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	debugfs_create_file("s2mpu", 0400, ab->debugfs, ab, &aoc_s2mpu_fops);
 	if (ab->tzpc_smc)
 		debugfs_create_file("tzpc", 0200, ab->debugfs, ab, &aoc_tzpc_fops);
+	debugfs_create_file("pmu", 0400, ab->debugfs, ab, &aoc_pmu_fops);
 	debugfs_create_file("load", 0200, ab->debugfs, ab, &aoc_load_fops);
 	debugfs_create_file("start", 0200, ab->debugfs, ab, &aoc_start_fops);
 	debugfs_create_file("control", 0400, ab->debugfs, ab, &aoc_control_fops);
