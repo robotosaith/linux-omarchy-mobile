@@ -169,7 +169,14 @@ bool aoc_pcm_update_pos(struct aoc_alsa_stream *alsa_stream, unsigned long consu
 	if (alsa_stream->pos_delta > alsa_stream->period_size) {
 		adjust_pos = alsa_stream->pos_delta % alsa_stream->period_size;
 		if (adjust_pos) {
-			alsa_stream->pos -= adjust_pos;
+			/*
+			 * Stay inside the buffer: right after a wrap pos can be
+			 * smaller than the adjustment (raven's AoC reads more
+			 * than a period at a time), and a negative pos reached
+			 * ALSA as a pointer of about 2^30 frames.
+			 */
+			alsa_stream->pos = (alsa_stream->pos + alsa_stream->buffer_size -
+					    adjust_pos) % alsa_stream->buffer_size;
 			alsa_stream->prev_consumed -= adjust_pos;
 		}
 	}
