@@ -50,26 +50,6 @@ config GS201_AOC_RAILS
 	  feed the AoC's digital microphones and sensors, until there is an
 	  S2MPG12/13 regulator driver. For bring-up only.
 
-config GS201_CAM_PROBE
-	tristate "gs201 camera receiver power and register probe (bring-up)"
-	depends on EXYNOS_PMU
-	help
-	  On load, reads the camera power domain status (pd-csis, pd-pdp)
-	  and the MIPI DC-PHY isolation bit through the exynos-pmu regmap
-	  and, with step=, one register of the CSIS links, the CSIS WDMA or
-	  the DC-PHY if the domains are on. It never writes. For bring-up
-	  only.
-
-config GS201_CAM_POWER
-	tristate "gs201 camera module power sequencing and ID reads (bring-up)"
-	depends on I2C && DEBUG_FS && OF
-	help
-	  Binds to a camera module's I2C device and, from debugfs, powers it
-	  up and down in the order and with the delays the device tree
-	  gives, and reads single identification registers from a list in
-	  the device tree. It never writes to the device. For bring-up only,
-	  until there are sensor drivers.
-
 config GS201_AOC_MBOX
 	tristate "gs201 AoC mailboxes"
 	depends on MAILBOX
@@ -104,7 +84,6 @@ config GS201_AOC_ALSA
 	  the speaker amplifiers on TDM 0. The card enforces the speaker
 	  limits in device/cheetah/AUDIO-PLAN.md.
 
-source "drivers/soc/google/cpif/Kconfig"
 
 endmenu
 
