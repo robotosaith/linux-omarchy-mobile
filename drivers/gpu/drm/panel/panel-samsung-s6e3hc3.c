@@ -11,7 +11,8 @@
  * backlight power state changes. A blanked backlight (bl_power) turns the
  * display off, which stops the OLED emitting but keeps the panel out of
  * sleep with its registers intact; unblanking turns it back on. Level 0
- * is the dimmest level, not off.
+ * is the dimmest level, not off. It switches between 60 and 120 Hz for the
+ * DSIM (drm_panel_set_refresh_rate()).
  */
 
 #include <linux/backlight.h>
@@ -81,7 +82,36 @@ static const struct backlight_ops s6e3hc3_bl_ops = {
 	.update_status = s6e3hc3_bl_update_status,
 };
 
+/*
+ * Manual 60/120 Hz, as the vendor driver's s6e3hc3_set_manual_mode(): the
+ * rate takes effect at the panel's next frame (frequency update), with no
+ * power cycle. The DSIM switches its link timers around this.
+ */
+static int s6e3hc3_set_refresh_rate(struct drm_panel *panel, unsigned int hz)
+{
+	struct s6e3hc3 *ctx = container_of(panel, struct s6e3hc3, panel);
+	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
+
+	if (hz != 60 && hz != 120)
+		return -EINVAL;
+
+	guard(mutex)(&ctx->lock);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
+	/* manual mode, then 0x00 for 120 Hz or 0x01 for 60 Hz */
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xbd, 0x21);
+	if (hz == 120)
+		mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x60, 0x00);
+	else
+		mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x60, 0x01);
+	/* frequency update */
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
+
+	return dsi_ctx.accum_err;
+}
+
 static const struct drm_panel_funcs s6e3hc3_panel_funcs = {
+	.set_refresh_rate = s6e3hc3_set_refresh_rate,
 };
 
 static int s6e3hc3_probe(struct mipi_dsi_device *dsi)
