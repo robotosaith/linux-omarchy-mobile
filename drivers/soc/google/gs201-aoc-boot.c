@@ -918,6 +918,7 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct reserved_mem *rmem;
 	struct device_node *np;
+	struct resource *res;
 	struct aoc_boot *ab;
 	unsigned int i;
 	int ret;
@@ -935,9 +936,16 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	ab->s2mpu = devm_platform_ioremap_resource_byname(pdev, "s2mpu");
 	if (IS_ERR(ab->s2mpu))
 		return PTR_ERR(ab->s2mpu);
-	ab->chipid = devm_platform_ioremap_resource_byname(pdev, "chipid");
-	if (IS_ERR(ab->chipid))
-		return PTR_ERR(ab->chipid);
+	/*
+	 * Read only, and shared: on gs101 the Exynos chipid driver owns this
+	 * block (efuse@10000000), so map it without requesting the region.
+	 */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "chipid");
+	if (!res)
+		return -EINVAL;
+	ab->chipid = devm_ioremap(dev, res->start, resource_size(res));
+	if (!ab->chipid)
+		return -ENOMEM;
 	/* Optional, in BLK_AOC: read only while the acknowledge is set */
 	if (platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcu")) {
 		ab->pcu = devm_platform_ioremap_resource_byname(pdev, "pcu");
