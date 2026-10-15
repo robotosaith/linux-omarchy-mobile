@@ -7,6 +7,8 @@
 
 #include "aoc.h"
 #include <linux/io.h>
+#include <linux/regmap.h>
+#include <linux/soc/samsung/exynos-pmu.h>
 #include <linux/mutex.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
@@ -83,6 +85,41 @@ void request_aoc_on(struct aoc_prvdata *p, bool status)
 	iowrite32(!!status, p->aoc_req_virt);
 }
 EXPORT_SYMBOL_GPL(request_aoc_on);
+
+/*
+ * gs101: BLK_AOC's power domain (Google's blkpwr_aoc, flexpmu_cal_local_gs101.h).
+ * Raven's bootloader hands over with it off although aoc_req is acknowledged,
+ * and every BLK_AOC register then aborts. The PMU write goes through the
+ * kernel's PMU regmap (an SMC). gs201 needs nothing here.
+ */
+#define PMU_AOC_CONFIGURATION	0x1880
+#define PMU_AOC_STATUS		0x1884
+
+int aoc_blk_pd_on(struct aoc_prvdata *p)
+{
+#if IS_ENABLED(CONFIG_SOC_GS101)
+	struct regmap *pmu = exynos_get_pmu_regmap();
+	u32 status;
+	int ret;
+
+	if (IS_ERR(pmu))
+		return PTR_ERR(pmu);
+	ret = regmap_read(pmu, PMU_AOC_STATUS, &status);
+	if (ret || (status & BIT(0)))
+		return ret;
+	ret = regmap_update_bits(pmu, PMU_AOC_CONFIGURATION, BIT(0), BIT(0));
+	if (!ret)
+		ret = regmap_read_poll_timeout(pmu, PMU_AOC_STATUS, status,
+					       status & BIT(0), 100,
+					       100 * USEC_PER_MSEC);
+	dev_info(p->dev, "BLK_AOC power domain on: status %#x%s\n", status,
+		 ret ? " (failed)" : "");
+	return ret;
+#else
+	return 0;
+#endif
+}
+EXPORT_SYMBOL_GPL(aoc_blk_pd_on);
 
 int wait_for_aoc_status(struct aoc_prvdata *p, bool status)
 {
