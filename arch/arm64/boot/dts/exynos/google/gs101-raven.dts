@@ -74,6 +74,8 @@
 &aoc {
 	google,board-id = <0x20202>;
 	google,board-rev = <0x10000>;
+	/* D_TZPC_AOC: stock pd_aoc's need_smc, restored by an EL3 SMC */
+	google,tzpc-smc = <0x1a010204>;
 	sensor_1v8-supply = <&{/firmware/power-management/pmic-2/regulators/ldo7s}>;
 	sensor_3v3-supply = <&{/firmware/power-management/pmic-2/regulators/ldo6s}>;
 	sensor_power_list = "sensor_1v8", "sensor_3v3";

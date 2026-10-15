@@ -52,6 +52,7 @@
  * Copyright (c) 2019-2023 Google LLC
  */
 
+#include <linux/arm-smccc.h>
 #include <linux/bits.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -241,6 +242,7 @@ struct aoc_boot {
 	void *dram;		/* the carve-out, write-combined */
 	u32 ipc_offset;
 	u32 board_id, board_rev;
+	u32 tzpc_smc;		/* optional: the DTZPC's need_smc address (gs101) */
 	struct aoc_sysmmu_window win[MAX_WINDOWS];
 	unsigned int nwin;
 	struct mutex lock;
@@ -484,6 +486,40 @@ static int aoc_s2mpu_show(struct seq_file *s, void *unused)
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(aoc_s2mpu);
+
+/*
+ * The EL3 monitor's DTZPC save and restore for a runtime power domain
+ * (Google's exynos-pd_el3.c): SMC_CMD_PREPARE_PD_ONOFF with the domain's
+ * need_smc address and RUNTIME_PM_TZPC_GROUP. Mode 1 restores after a
+ * power-up, mode 0 saves before a power-down.
+ */
+#define SMC_CMD_PREPARE_PD_ONOFF	0x82000410
+#define RUNTIME_PM_TZPC_GROUP		2
+
+static ssize_t aoc_tzpc_write(struct file *file, const char __user *ubuf,
+			      size_t count, loff_t *ppos)
+{
+	struct aoc_boot *ab = file->private_data;
+	struct arm_smccc_res res;
+	unsigned int mode;
+	int ret;
+
+	ret = kstrtouint_from_user(ubuf, count, 0, &mode);
+	if (ret)
+		return ret;
+	if (mode > 1 || !ab->tzpc_smc)
+		return -EINVAL;
+	arm_smccc_smc(SMC_CMD_PREPARE_PD_ONOFF, mode, ab->tzpc_smc,
+		      RUNTIME_PM_TZPC_GROUP, 0, 0, 0, 0, &res);
+	dev_info(ab->dev, "DTZPC %s %#x: smc returned %#lx\n",
+		 mode ? "restore" : "save", ab->tzpc_smc, res.a0);
+	return res.a0 ? -EIO : count;
+}
+
+static const struct file_operations aoc_tzpc_fops = {
+	.open = simple_open,
+	.write = aoc_tzpc_write,
+};
 
 static int aoc_pcu_show(struct seq_file *s, void *unused)
 {
@@ -1011,6 +1047,8 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	if (IS_ERR(ab->dram))
 		return PTR_ERR(ab->dram);
 
+	/* Optional: none on gs201, D_TZPC_AOC + 0x204 on gs101 */
+	of_property_read_u32(dev->of_node, "google,tzpc-smc", &ab->tzpc_smc);
 	ret = of_property_read_u32(dev->of_node, "google,board-id", &ab->board_id);
 	if (!ret)
 		ret = of_property_read_u32(dev->of_node, "google,board-rev",
@@ -1033,6 +1071,8 @@ static int aoc_boot_probe(struct platform_device *pdev)
 	debugfs_create_file("power", 0200, ab->debugfs, ab, &aoc_power_fops);
 	debugfs_create_file("blk", 0400, ab->debugfs, ab, &aoc_blk_fops);
 	debugfs_create_file("s2mpu", 0400, ab->debugfs, ab, &aoc_s2mpu_fops);
+	if (ab->tzpc_smc)
+		debugfs_create_file("tzpc", 0200, ab->debugfs, ab, &aoc_tzpc_fops);
 	debugfs_create_file("load", 0200, ab->debugfs, ab, &aoc_load_fops);
 	debugfs_create_file("start", 0200, ab->debugfs, ab, &aoc_start_fops);
 	debugfs_create_file("control", 0400, ab->debugfs, ab, &aoc_control_fops);
