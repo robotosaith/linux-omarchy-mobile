@@ -2647,7 +2647,14 @@ static int aoc_platform_probe(struct platform_device *pdev)
 
 	/* In BLK_AOC: only touched once aoc_req is acknowledged */
 	prvdata->s2mpu_virt = devm_platform_ioremap_resource_byname(pdev, "s2mpu");
-	prvdata->chipid_virt = devm_platform_ioremap_resource_byname(pdev, "chipid");
+	/*
+	 * Read only, and shared: on gs101 the Exynos chipid driver owns this
+	 * block (efuse@10000000), so map it without requesting the region.
+	 */
+	rsrc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "chipid");
+	prvdata->chipid_virt = rsrc ? devm_ioremap(dev, rsrc->start, resource_size(rsrc)) : NULL;
+	if (!prvdata->chipid_virt)
+		prvdata->chipid_virt = IOMEM_ERR_PTR(-ENOMEM);
 	if (IS_ERR(prvdata->s2mpu_virt) || IS_ERR(prvdata->chipid_virt)) {
 		rc = -ENOMEM;
 		goto err_watchdog_iommu_irq;
