@@ -163,6 +163,20 @@
 	status = "okay";
 };
 
+/*
+ * The panel's rails (the framebuffer's vci and vddi supplies). simpledrm
+ * holds them; when gs-decon takes the display over, simpledrm goes away and
+ * releases them, the panel lost power and DECON stalled on its first flip
+ * (DISPLAY-PLAN.md D3). Keep them on until the panel driver owns them.
+ */
+&s2mpg10_ldo22m {
+	regulator-always-on;
+};
+
+&s2mpg11_bucka {
+	regulator-always-on;
+};
+
 &framebuffer0 {
 	width = <1440>;
 	height = <3120>;
