@@ -88,6 +88,8 @@
 };
 
 &dsi0 {
+	/* simpledrm scans out: mask DECON's trigger while the display is off */
+	google,decon = <&decon0>;
 	status = "okay";
 	/delete-node/ port;
 
