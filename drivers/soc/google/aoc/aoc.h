@@ -249,6 +249,7 @@ bool aoc_release_from_reset(struct aoc_prvdata *prvdata);
 void *aoc_sram_translate(u32 offset);
 
 void request_aoc_on(struct aoc_prvdata *p, bool status);
+int aoc_blk_pd_on(struct aoc_prvdata *p);
 int wait_for_aoc_status(struct aoc_prvdata *p, bool status);
 
 int aoc_watchdog_restart(struct aoc_prvdata *prvdata,

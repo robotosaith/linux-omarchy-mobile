@@ -676,6 +676,10 @@ static void aoc_fw_callback(const struct firmware *fw, void *ctx)
 			dev_err(dev, "no aoc_req acknowledge\n");
 			goto free_fw;
 		}
+		if (aoc_blk_pd_on(prvdata)) {
+			dev_err(dev, "BLK_AOC power domain did not come on\n");
+			goto free_fw;
+		}
 		dev_info(dev, "AoC S2MPU CTRL0 %#x, opening\n",
 			 readl(prvdata->s2mpu_virt + AOC_S2MPU_CTRL0));
 		writel(0, prvdata->s2mpu_virt + AOC_S2MPU_CTRL0);
