@@ -1036,6 +1036,7 @@ static void aoc_boot_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id aoc_boot_of_match[] = {
+	{ .compatible = "google,gs101-aoc" },
 	{ .compatible = "google,gs201-aoc" },
 	{ }
 };

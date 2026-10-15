@@ -478,6 +478,7 @@ static void aoc_sysmmu_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id aoc_sysmmu_of_match[] = {
+	{ .compatible = "google,gs101-aoc-sysmmu" },
 	{ .compatible = "google,gs201-aoc-sysmmu" },
 	{ }
 };
