@@ -101,6 +101,10 @@
 };
 
 /* Unused blocks the bootloader leaves powered (POWER-PLAN.md): genpd turns them off */
+&pd_aoc {
+	status = "okay";
+};
+
 &pd_g2d {
 	status = "okay";
 };

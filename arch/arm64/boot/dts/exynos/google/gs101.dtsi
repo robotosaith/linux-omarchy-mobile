@@ -2047,6 +2047,14 @@
 		 * Linux does not use yet, so that genpd powers them off at boot
 		 * (the bootloader leaves all of them on). Through the PMU regmap.
 		 */
+		pd_aoc: power-domain@17461880 {
+			compatible = "google,gs101-pd";
+			reg = <0x17461880 0x20>;
+			#power-domain-cells = <0>;
+			label = "aoc";
+			status = "disabled";
+		};
+
 		pd_g2d: power-domain@17462300 {
 			compatible = "google,gs101-pd";
 			reg = <0x17462300 0x20>;
