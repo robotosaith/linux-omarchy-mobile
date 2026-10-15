@@ -554,6 +554,41 @@ static int aoc_pmu_show(struct seq_file *s, void *unused)
 DEFINE_SHOW_ATTRIBUTE(aoc_pmu);
 
 /*
+ * BLK_AOC's power domain (gs101 blkpwr_aoc: aoc_on/aoc_off). On raven the
+ * bootloader hands over with it off although aoc_req is acknowledged, and
+ * every BLK_AOC register then aborts or hangs, from EL3 too. PMU writes go
+ * through the kernel's regmap (an SMC on gs101), never from user space.
+ */
+static ssize_t aoc_pd_write(struct file *file, const char __user *ubuf,
+			    size_t count, loff_t *ppos)
+{
+	struct aoc_boot *ab = file->private_data;
+	struct regmap *pmu = exynos_get_pmu_regmap();
+	u32 status = 0;
+	bool on;
+	int ret;
+
+	ret = kstrtobool_from_user(ubuf, count, &on);
+	if (ret)
+		return ret;
+	if (IS_ERR(pmu))
+		return PTR_ERR(pmu);
+	ret = regmap_update_bits(pmu, PMU_AOC_CONFIGURATION, BIT(0), on);
+	if (!ret)
+		ret = regmap_read_poll_timeout(pmu, PMU_AOC_STATUS, status,
+					       (status & BIT(0)) == on,
+					       100, 100 * USEC_PER_MSEC);
+	dev_info(ab->dev, "blkpwr_aoc %s: status %#x%s\n", on ? "on" : "off",
+		 status, ret ? " (failed)" : "");
+	return ret ?: count;
+}
+
+static const struct file_operations aoc_pd_fops = {
+	.open = simple_open,
+	.write = aoc_pd_write,
+};
+
+/*
  * CMU_BUS0's Q-channels for the AP's ports into BLK_AOC (P: SFR access) and
  * the GSA (reference: that path works). No mainline driver owns CMU_BUS0.
  * Each read is logged before the next, so an abort names its register.
@@ -1154,6 +1189,7 @@ static int aoc_boot_probe(struct platform_device *pdev)
 		debugfs_create_file("tzpc", 0200, ab->debugfs, ab, &aoc_tzpc_fops);
 	debugfs_create_file("pmu", 0400, ab->debugfs, ab, &aoc_pmu_fops);
 	debugfs_create_file("bus0", 0400, ab->debugfs, ab, &aoc_bus0_fops);
+	debugfs_create_file("pd", 0200, ab->debugfs, ab, &aoc_pd_fops);
 	debugfs_create_file("load", 0200, ab->debugfs, ab, &aoc_load_fops);
 	debugfs_create_file("start", 0200, ab->debugfs, ab, &aoc_start_fops);
 	debugfs_create_file("control", 0400, ab->debugfs, ab, &aoc_control_fops);
