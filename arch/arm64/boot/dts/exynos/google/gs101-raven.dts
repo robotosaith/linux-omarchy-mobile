@@ -26,7 +26,7 @@
 		 * panic is silent: panic=10 reboots instead of hanging. init hands
 		 * over to the Arch root on userdata when it finds one.
 		 */
-		bootargs = "console=tty0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init";
+		bootargs = "console=tty0 panic=10 clk_ignore_unused rdinit=/init";
 	};
 
 	/* Target of the debug-policy overlay ABL applies from the dpm partition. */
@@ -38,9 +38,33 @@
 		log_preslcdump: log-preslcdump { status = "disabled"; };
 		log_slcdump: log-slcdump { status = "disabled"; };
 	};
+
+	reserved-memory {
+		/*
+		 * Scanout buffers for gs-decon: DPP0 takes 32-bit addresses and
+		 * the DPU SysMMU is bypassed (as on cheetah). Five 1440x3120
+		 * XRGB8888 buffers; reusable while unused.
+		 */
+		display_pool: display-pool {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x5c00000>;
+			alignment = <0x0 0x200000>;
+			/* Not in 3.75-4 GiB: DPP0's reads from 0xf2c00000+ hung silently */
+			alloc-ranges = <0x0 0xa0000000 0x40000000>;
+		};
+	};
 };
 
 &acpm_ipc {
+	/*
+	 * ABL leaves the memory bus at 2028 MHz and nothing scales it yet.
+	 * 1014 MHz saved about 70 mA, as much as stock's
+	 * 421 MHz idle, with headroom for the display and the GPU.
+	 */
+	assigned-clocks = <&acpm_ipc GS101_CLK_ACPM_DVFS_MIF>;
+	assigned-clock-rates = <1014000000>;
+
 	pmic-2 {
 		regulators {
 			ldo4s {
@@ -58,10 +82,117 @@
 	};
 };
 
+&acpm_tmu {
+	status = "okay";
+};
+
+/* Unused blocks the bootloader leaves powered: genpd turns them off */
+&pd_aoc {
+	status = "okay";
+};
+
+&pd_g2d {
+	status = "okay";
+};
+
+&pd_mfc {
+	status = "okay";
+};
+
+&pd_csis {
+	status = "okay";
+};
+
+&pd_pdp {
+	status = "okay";
+};
+
+&pd_dns {
+	status = "okay";
+};
+
+&pd_g3aa {
+	status = "okay";
+};
+
+&pd_ipp {
+	status = "okay";
+};
+
+&pd_itp {
+	status = "okay";
+};
+
+&pd_mcsc {
+	status = "okay";
+};
+
+&pd_gdc {
+	status = "okay";
+};
+
+&pd_tnr {
+	status = "okay";
+};
+
+&pd_bo {
+	status = "okay";
+};
+
+&pd_tpu {
+	status = "okay";
+};
+
+/* Bluetooth: the BCM4389 on the APM USI1 UART (Google's gs101-common-bluetooth) */
+&usi_apm1 {
+	status = "okay";
+};
+
+&serial_apm1 {
+	status = "okay";
+
+	bluetooth {
+		compatible = "brcm,bcm4389-bt";
+		shutdown-gpios = <&gpp16 2 GPIO_ACTIVE_HIGH>;
+		device-wakeup-gpios = <&gpp14 3 GPIO_ACTIVE_HIGH>;
+		interrupts-extended = <&gpa6 6 IRQ_TYPE_EDGE_RISING>;
+		interrupt-names = "host-wakeup";
+		max-speed = <3000000>;
+	};
+};
+
+/* AoC bring-up: Trusty and the GSA mailbox */
+&trusty {
+	status = "okay";
+};
+
+&gsa {
+	status = "okay";
+};
+
 &cont_splash_mem {
 	reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 
 	status = "okay";
+};
+
+/* The display: gs-decon takes over the bootloader's pipeline from simpledrm */
+&decon0 {
+	memory-region = <&display_pool>, <&cont_splash_mem>;
+	memory-region-names = "pool", "boot-framebuffer";
+	status = "okay";
+};
+
+&dsi0 {
+	/* mask DECON's trigger while the panel's display is off */
+	google,decon = <&decon0>;
+	status = "okay";
+
+	/* brightness, display on/off and 60/120 Hz; the bootloader runs it */
+	panel@0 {
+		compatible = "samsung,s6e3hc3";
+		reg = <0>;
+	};
 };
 
 &framebuffer0 {
@@ -71,6 +202,20 @@
 	format = "a8r8g8b8";
 
 	status = "okay";
+};
+
+/*
+ * The panel's rails (the framebuffer's vci and vddi supplies). simpledrm
+ * holds them; when gs-decon takes the display over, simpledrm goes away and
+ * releases them, the panel lost power and DECON stalled on its first flip.
+ * Keep them on until the panel driver owns them.
+ */
+&s2mpg10_ldo22m {
+	regulator-always-on;
+};
+
+&s2mpg11_bucka {
+	regulator-always-on;
 };
 
 /* ABL leaves both cluster watchdogs running; take over the second one too. */
@@ -160,4 +305,68 @@
 &{/firmware/power-management/pmic-1/regulators/ldo26m} {
 	regulator-min-microvolt = <3300000>;
 	regulator-max-microvolt = <3300000>;
+};
+
+/* The Mali-G78 MP20 on its S2MPG10/11 rails, as postmarketOS describes them */
+&gpu {
+	mali-supply = <&{/firmware/power-management/pmic-2/regulators/buck2s}>;
+	g3d-l2-supply = <&{/firmware/power-management/pmic-2/regulators/buck8s}>;
+	g3d-m-supply = <&{/firmware/power-management/pmic-2/regulators/ldo1s}>;
+	int-m-supply = <&{/firmware/power-management/pmic-1/regulators/buck7m}>;
+
+	status = "okay";
+};
+
+/*
+ * Wi-Fi: the BCM4389 on PCIe GEN4A_1 (Google's gs101-common-wlan.dtsi):
+ * WL_REG_ON on gpp14-2. As on cheetah, its DMA buffers come from a
+ * restricted pool below 4 GiB (2 address cells, 1 size cell on gs101).
+ * Google's raven node runs the link without cache coherency.
+ */
+/ {
+	wlan_pwr: regulator-wlan {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan-reg-on";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpp14 2 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <200000>;
+	};
+
+	reserved-memory {
+		wifi_dma_pool: wifi-dma-pool {
+			compatible = "restricted-dma-pool";
+			size = <0x1000000>;
+			alignment = <0x0 0x200000>;
+			/* the chip's writes above 4 GiB are not seen (cheetah) */
+			alloc-ranges = <0x0 0x80000000 0x80000000>;
+		};
+	};
+};
+
+&pcie_1_phy {
+	status = "okay";
+};
+
+&pcie_1 {
+	status = "okay";
+
+	pcie@0,0 {
+		compatible = "pciclass,0604";
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		bus-range = <0x01 0xff>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+		vpcie3v3-supply = <&wlan_pwr>;
+
+		wifi@0,0 {
+			compatible = "pci14e4,4441";
+			reg = <0x10000 0x0 0x0 0x0 0x0>;
+			brcm,board-type = "google,gs101-raven";
+			memory-region = <&wifi_dma_pool>;
+		};
+	};
 };
