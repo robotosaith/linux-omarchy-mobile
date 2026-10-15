@@ -1959,6 +1959,15 @@
 			samsung,mode = <USI_MODE_UART>;
 			/* UART Rx needs the IP clock while idle */
 			samsung,clkreq-on;
+			/*
+			 * The UART's baud clock comes from mout_apm_func, which
+			 * the firmware runs from mout_apm_funcsrc (PLL_ALV/2, so
+			 * 197 MHz at the UART) but which read as the oscillator
+			 * when cmu_apm registered: the clock tree, and with it
+			 * the baud divisor, was off by 16x.
+			 */
+			assigned-clocks = <&cmu_apm CLK_MOUT_APM_FUNC>;
+			assigned-clock-parents = <&cmu_apm CLK_MOUT_APM_FUNCSRC>;
 			status = "disabled";
 
 			serial_apm1: serial@175b0000 {
