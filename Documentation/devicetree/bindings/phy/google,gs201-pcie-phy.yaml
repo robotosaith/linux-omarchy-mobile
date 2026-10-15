@@ -18,7 +18,9 @@ description:
 
 properties:
   compatible:
-    const: google,gs201-pcie-phy
+    enum:
+      - google,gs101-pcie-phy
+      - google,gs201-pcie-phy
 
   reg:
     items:

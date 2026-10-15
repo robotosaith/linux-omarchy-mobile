@@ -23,7 +23,9 @@ allOf:
 
 properties:
   compatible:
-    const: google,gs201-pcie
+    enum:
+      - google,gs101-pcie
+      - google,gs201-pcie
 
   reg:
     minItems: 3
