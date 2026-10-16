@@ -236,6 +236,16 @@ static int gs101_ufs_drv_init(struct exynos_ufs *ufs)
 	/* Enable clock gating and hibern8 */
 	hba->caps |= UFSHCD_CAP_CLK_GATING | UFSHCD_CAP_HIBERN8_WITH_CLK_GATING;
 
+	/*
+	 * gs101_ufs_suspend() asserts the device reset, so the link can't
+	 * stay in Hibern8 across system suspend: at the default level the
+	 * first Hibern8 exit on resume fails and the error handler has to
+	 * reset the host and the device. Power the device down and turn the
+	 * link off instead, which resumes through a full re-init, as the
+	 * downstream driver does.
+	 */
+	hba->spm_lvl = UFS_PM_LVL_5;
+
 	/* set ACG to be controlled by UFS_ACG_DISABLE */
 	reg = hci_readl(ufs, HCI_IOP_ACG_DISABLE);
 	hci_writel(ufs, reg & (~HCI_IOP_ACG_DISABLE_EN), HCI_IOP_ACG_DISABLE);
