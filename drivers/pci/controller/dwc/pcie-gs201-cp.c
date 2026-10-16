@@ -82,6 +82,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/seq_file.h>
 #include <linux/soc/samsung/exynos-pmu.h>
 #include <linux/soc/google/gs201-pcie-cp.h>
@@ -93,6 +94,10 @@
 static bool allow_hw;
 module_param(allow_hw, bool, 0444);
 MODULE_PARM_DESC(allow_hw, "Allow the debugfs steps and the modem driver to bring the link up (default: off)");
+
+static unsigned int max_speed = 3;
+module_param(max_speed, uint, 0644);
+MODULE_PARM_DESC(max_speed, "Cap on the link speed the steps and the modem driver ask for, 1-3 (default: 3)");
 
 static bool trace_lines;
 module_param(trace_lines, bool, 0644);
@@ -1130,6 +1135,11 @@ static int cp_link_up(struct gs201_pcie_cp *cp, unsigned int speed)
 
 	if (cp->has_lines && !cp->cp_powered)
 		dev_warn(cp->dev, "modem not powered (cp_on): expect no link\n");
+	if (speed > clamp(max_speed, 1U, 3U)) {
+		dev_info(cp->dev, "Gen%u asked, capped at Gen%u (max_speed)\n",
+			 speed, clamp(max_speed, 1U, 3U));
+		speed = clamp(max_speed, 1U, 3U);
+	}
 
 	if (!cp->phy_inited) {
 		/* PERST# asserted and CLKREQ# in its function before the PHY */
@@ -1950,6 +1960,17 @@ static int gs201_pcie_cp_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return dev_err_probe(dev, ret, "controller clocks\n");
 	cp->num_clks = ret;
+
+	/*
+	 * gs101's PCIe rails (stock's vreg1 and vreg2): the bootloader leaves
+	 * them on, and nothing else claims them. Optional: gs201's node has none.
+	 */
+	ret = devm_regulator_get_enable_optional(dev, "vdd085");
+	if (ret && ret != -ENODEV)
+		return dev_err_probe(dev, ret, "vdd085 supply\n");
+	ret = devm_regulator_get_enable_optional(dev, "vdd18");
+	if (ret && ret != -ENODEV)
+		return dev_err_probe(dev, ret, "vdd18 supply\n");
 	raw_spin_lock_init(&cp->cfg_lock);
 	raw_spin_lock_init(&cp->dbi_lock);
 	spin_lock_init(&cp->event_lock);
