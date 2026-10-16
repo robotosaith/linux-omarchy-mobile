@@ -112,6 +112,7 @@ MODULE_PARM_DESC(watch_lines, "Log every edge on the modem's cp2ap lines, with i
 #define CP_ELBI_IRQ0_PM_TO_ACK		BIT(29)
 #define CP_ELBI_IRQ1_LINK_DOWN		BIT(10)	/* IRQ1 and IRQ1_EN */
 #define CP_ELBI_IRQ2_CPL_TIMEOUT	BIT(24)	/* IRQ2 and IRQ2_EN */
+#define CP_ELBI_IRQ2_MSI		BIT(17)	/* IRQ2: MSI asserted; IRQ2_EN: rising edge */
 #define CP_ELBI_LTSSM_EN		0x054
 #define CP_ELBI_DEVICE_TYPE		0x080
 #define CP_ELBI_DEVICE_TYPE_RC		0x4
@@ -267,6 +268,7 @@ struct gs201_pcie_cp {
 		void *ctx;
 	} queue[CP_MSI_QUEUES];
 	int ctrl_irq;		/* controller events: link down, CPL timeout */
+	bool msi_combined;	/* gs101: MSIs come on the controller interrupt */
 	bool ctrl_irq_on;
 	spinlock_t event_lock;	/* faults, event_pending, client */
 	u32 faults;		/* GS201_PCIE_CP_EVENT_*, until cleared */
@@ -684,14 +686,27 @@ static int cp_msi_setup(struct gs201_pcie_cp *cp)
 		raw_spin_lock_init(&pp->lock);
 		pp->use_imsi_rx = true;
 		/* The domain gets block 0 only; blocks 1-4 are the queues' */
-		ret = platform_get_irq_byname(pdev, "msi0");
-		if (ret < 0)
-			return ret;
-		pp->msi_irq[0] = ret;
+		ret = platform_get_irq_byname_optional(pdev, "msi0");
 		pp->num_vectors = MAX_MSI_IRQS_PER_CTRL;
-		ret = dw_pcie_msi_host_init(pp);	/* handlers on, enabled */
-		if (ret)
-			return ret;
+		if (ret <= 0 && cp->ctrl_irq > 0) {
+			/*
+			 * gs101: one interrupt for the controller's events and its
+			 * MSIs (stock: use-msi, no separated-msi). The controller
+			 * handler dispatches them, as Google's does.
+			 */
+			pp->irq_mask[0] = ~0;
+			ret = dw_pcie_allocate_domains(pp);
+			if (ret)
+				return ret;
+			cp->msi_combined = true;
+		} else {
+			if (ret < 0)
+				return ret;
+			pp->msi_irq[0] = ret;
+			ret = dw_pcie_msi_host_init(pp);	/* handlers on, enabled */
+			if (ret)
+				return ret;
+		}
 		for (i = 0; i < CP_MSI_QUEUES; i++)
 			if (cp->queue[i].irq > 0)
 				enable_irq(cp->queue[i].irq);
@@ -702,6 +717,8 @@ static int cp_msi_setup(struct gs201_pcie_cp *cp)
 			 pp->num_vectors, &pp->msi_data, cp_msi_queue_count(cp));
 	}
 	dw_pcie_msi_init(pp);	/* the controller reset cleared these */
+	if (cp->msi_combined)
+		cp_elbi_rmw(cp, CP_ELBI_IRQ2_EN, 0, CP_ELBI_IRQ2_MSI);
 	for (i = 0; i < CP_MSI_QUEUES; i++)
 		if (cp->queue[i].irq > 0)
 			cp_msi_queue_init(cp, &cp->queue[i]);
@@ -881,7 +898,7 @@ static irqreturn_t cp_ctrl_irq_handler(int irq, void *data)
 {
 	struct gs201_pcie_cp *cp = data;
 	u32 irq0, irq1, irq2, ev = 0;
-	bool queue = false;
+	bool queue = false, msi;
 
 	raw_spin_lock(&cp->cfg_lock);
 	if (!cp->cfg_root_ok) {
@@ -901,7 +918,11 @@ static irqreturn_t cp_ctrl_irq_handler(int irq, void *data)
 	}
 	if (irq2 & CP_ELBI_IRQ2_CPL_TIMEOUT)
 		ev |= GS201_PCIE_CP_EVENT_CPL_TIMEOUT;
+	msi = cp->msi_combined && cp->msi_ready && (irq2 & CP_ELBI_IRQ2_MSI);
 	raw_spin_unlock(&cp->cfg_lock);
+
+	if (msi)
+		dw_handle_msi_irq(&cp->pci.pp);
 
 	if (!ev)
 		return (irq0 | irq1 | irq2) ? IRQ_HANDLED : IRQ_NONE;
@@ -956,12 +977,13 @@ static void cp_ctrl_irq(struct gs201_pcie_cp *cp, bool on)
 		return;
 	if (on) {
 		cp_elbi_rmw(cp, CP_ELBI_IRQ1_EN, 0, CP_ELBI_IRQ1_LINK_DOWN);
-		cp_elbi_rmw(cp, CP_ELBI_IRQ2_EN, 0, CP_ELBI_IRQ2_CPL_TIMEOUT);
+		cp_elbi_rmw(cp, CP_ELBI_IRQ2_EN, 0, CP_ELBI_IRQ2_CPL_TIMEOUT |
+			    (cp->msi_combined && cp->msi_ready ? CP_ELBI_IRQ2_MSI : 0));
 		enable_irq(cp->ctrl_irq);
 	} else {
 		disable_irq(cp->ctrl_irq);
 		cp_elbi_rmw(cp, CP_ELBI_IRQ1_EN, CP_ELBI_IRQ1_LINK_DOWN, 0);
-		cp_elbi_rmw(cp, CP_ELBI_IRQ2_EN, CP_ELBI_IRQ2_CPL_TIMEOUT, 0);
+		cp_elbi_rmw(cp, CP_ELBI_IRQ2_EN, CP_ELBI_IRQ2_CPL_TIMEOUT | CP_ELBI_IRQ2_MSI, 0);
 	}
 	cp->ctrl_irq_on = on;
 }
