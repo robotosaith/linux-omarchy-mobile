@@ -186,3 +186,33 @@
 		spi-max-frequency = <2150000>;
 	};
 };
+
+/*
+ * The modem's shared memory, as stock's cp_shmem (board overlay 6): IPC,
+ * the MSI page and the packet processor's downlink and uplink buffers. The
+ * modem writes these by DMA once it runs, so Linux must never use them;
+ * our kernel had them as System RAM. Reserved always, as on stock.
+ */
+/ {
+	reserved-memory {
+		cp_ipc_mem: cp-rmem@f0000000 {
+			reg = <0x0 0xf0000000 0x800000>;
+			no-map;
+		};
+
+		cp_msi_mem: cp-msi@f6200000 {
+			reg = <0x0 0xf6200000 0x1000>;
+			no-map;
+		};
+
+		cp_pktproc_mem: cp-rmem1@e8000000 {
+			reg = <0x0 0xe8000000 0x1c00000>;
+			no-map;
+		};
+
+		cp_pktproc_ul_mem: cp-rmem2@ee000000 {
+			reg = <0x0 0xee000000 0x400000>;
+			no-map;
+		};
+	};
+};
