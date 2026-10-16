@@ -21,6 +21,7 @@
 #define CLKS_NR_APM	(CLK_APM_PLL_DIV16_APM + 1)
 #define CLKS_NR_DPU	(CLK_GOUT_DPU_SYSREG_DPU_PCLK + 1)
 #define CLKS_NR_HSI0	(CLK_GOUT_HSI0_XIU_P_HSI0_ACLK + 1)
+#define CLKS_NR_HSI1	(CLK_GOUT_HSI1_QE_PCIE_GEN4A_HSI1_PCLK + 1)
 #define CLKS_NR_HSI2	(CLK_GOUT_HSI2_XIU_P_HSI2_ACLK + 1)
 #define CLKS_NR_MISC	(CLK_GOUT_MISC_XIU_D_MISC_ACLK + 1)
 #define CLKS_NR_PERIC0	(CLK_GOUT_PERIC0_SYSREG_PERIC0_PCLK + 1)
@@ -2682,6 +2683,128 @@ static const struct samsung_cmu_info hsi0_cmu_info __initconst = {
 	.memclk_offset		= GS101_MEMCLK_OFFSET,
 };
 
+/* ---- CMU_HSI1 ------------------------------------------------------------ */
+
+/*
+ * Register Offset definitions for CMU_HSI1 (0x11800000): only the clocks of
+ * PCIe channel 0 (the modem's link), its GPIO and its SYSREG. Gates not
+ * listed here are left as the bootloader set them.
+ */
+#define PLL_CON0_MUX_CLKCMU_HSI1_BUS_USER					0x0600
+#define PLL_CON1_MUX_CLKCMU_HSI1_BUS_USER					0x0604
+#define PLL_CON0_MUX_CLKCMU_HSI1_PCIE_USER					0x0610
+#define PLL_CON1_MUX_CLKCMU_HSI1_PCIE_USER					0x0614
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_GPIO_HSI1_IPCLKPORT_PCLK			0x201c
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_DBI_ACLK_UG	0x2028
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_MSTR_ACLK_UG	0x202c
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_SLV_ACLK_UG	0x2030
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK	0x2034
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_PHY_REFCLK_IN	0x2038
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PHY_UDBG_I_APB_PCLK		0x2050
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PIPE_PAL_PCIE_INST_0_I_APB_PCLK	0x2054
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_SF_PCIEPHY210X2_LN05LPE_QCH_TM_WRAPPER_INST_0_I_APB_PCLK	0x2058
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_IA_GEN4A_0_IPCLKPORT_I_CLK		0x205c
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_ACLK		0x206c
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_PCLK		0x2070
+#define CLK_CON_GAT_GOUT_BLK_HSI1_UID_SYSREG_HSI1_IPCLKPORT_PCLK			0x2090
+
+static const unsigned long hsi1_clk_regs[] __initconst = {
+	PLL_CON0_MUX_CLKCMU_HSI1_BUS_USER,
+	PLL_CON1_MUX_CLKCMU_HSI1_BUS_USER,
+	PLL_CON0_MUX_CLKCMU_HSI1_PCIE_USER,
+	PLL_CON1_MUX_CLKCMU_HSI1_PCIE_USER,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_GPIO_HSI1_IPCLKPORT_PCLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_DBI_ACLK_UG,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_MSTR_ACLK_UG,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_SLV_ACLK_UG,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_PHY_REFCLK_IN,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PHY_UDBG_I_APB_PCLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PIPE_PAL_PCIE_INST_0_I_APB_PCLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_SF_PCIEPHY210X2_LN05LPE_QCH_TM_WRAPPER_INST_0_I_APB_PCLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_IA_GEN4A_0_IPCLKPORT_I_CLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_ACLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_PCLK,
+	CLK_CON_GAT_GOUT_BLK_HSI1_UID_SYSREG_HSI1_IPCLKPORT_PCLK,
+};
+
+PNAME(mout_hsi1_bus_user_p)	= { "oscclk", "dout_cmu_hsi1_bus" };
+PNAME(mout_hsi1_pcie_user_p)	= { "oscclk", "dout_cmu_hsi1_pcie" };
+
+static const struct samsung_mux_clock hsi1_mux_clks[] __initconst = {
+	MUX(CLK_MOUT_HSI1_BUS_USER, "mout_hsi1_bus_user", mout_hsi1_bus_user_p,
+	    PLL_CON0_MUX_CLKCMU_HSI1_BUS_USER, 4, 1),
+	MUX(CLK_MOUT_HSI1_PCIE_USER, "mout_hsi1_pcie_user",
+	    mout_hsi1_pcie_user_p, PLL_CON0_MUX_CLKCMU_HSI1_PCIE_USER, 4, 1),
+};
+
+static const struct samsung_gate_clock hsi1_gate_clks[] __initconst = {
+	GATE(CLK_GOUT_HSI1_GPIO_HSI1_PCLK,
+	     "gout_hsi1_gpio_hsi1_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_GPIO_HSI1_IPCLKPORT_PCLK, 21,
+	     CLK_IGNORE_UNUSED, 0),
+	/* Disabling this clock makes the system hang. Mark the clock as critical. */
+	GATE(CLK_GOUT_HSI1_SYSREG_HSI1_PCLK,
+	     "gout_hsi1_sysreg_hsi1_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_SYSREG_HSI1_IPCLKPORT_PCLK, 21,
+	     CLK_IS_CRITICAL, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_DBI_ACLK_UG,
+	     "gout_hsi1_pcie_gen4_0_pcie_003_dbi_aclk_ug", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_DBI_ACLK_UG,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_MSTR_ACLK_UG,
+	     "gout_hsi1_pcie_gen4_0_pcie_003_mstr_aclk_ug", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_MSTR_ACLK_UG,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_SLV_ACLK_UG,
+	     "gout_hsi1_pcie_gen4_0_pcie_003_slv_aclk_ug", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_SLV_ACLK_UG,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_I_DRIVER_APB_CLK,
+	     "gout_hsi1_pcie_gen4_0_pcie_003_i_driver_apb_clk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_PHY_REFCLK_IN,
+	     "gout_hsi1_pcie_gen4_0_pcie_003_phy_refclk_in", "mout_hsi1_pcie_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCIE_003_PCIE_SUB_CTRL_INST_0_PHY_REFCLK_IN,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PHY_UDBG_I_APB_PCLK,
+	     "gout_hsi1_pcie_gen4_0_pcs_pma_phy_udbg_i_apb_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PHY_UDBG_I_APB_PCLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PIPE_PAL_PCIE_I_APB_PCLK,
+	     "gout_hsi1_pcie_gen4_0_pcs_pma_pipe_pal_pcie_i_apb_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_PIPE_PAL_PCIE_INST_0_I_APB_PCLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PCIEPHY210X2_QCH_I_APB_PCLK,
+	     "gout_hsi1_pcie_gen4_0_pcs_pma_pciephy210x2_qch_i_apb_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_GEN4_0_IPCLKPORT_PCS_PMA_INST_0_SF_PCIEPHY210X2_LN05LPE_QCH_TM_WRAPPER_INST_0_I_APB_PCLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_PCIE_IA_GEN4A_0_I_CLK,
+	     "gout_hsi1_pcie_ia_gen4a_0_i_clk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_PCIE_IA_GEN4A_0_IPCLKPORT_I_CLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_QE_PCIE_GEN4A_HSI1_ACLK,
+	     "gout_hsi1_qe_pcie_gen4a_hsi1_aclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_ACLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_HSI1_QE_PCIE_GEN4A_HSI1_PCLK,
+	     "gout_hsi1_qe_pcie_gen4a_hsi1_pclk", "mout_hsi1_bus_user",
+	     CLK_CON_GAT_GOUT_BLK_HSI1_UID_QE_PCIE_GEN4A_HSI1_IPCLKPORT_PCLK,
+	     21, 0, 0),
+};
+
+static const struct samsung_cmu_info hsi1_cmu_info __initconst = {
+	.mux_clks		= hsi1_mux_clks,
+	.nr_mux_clks		= ARRAY_SIZE(hsi1_mux_clks),
+	.gate_clks		= hsi1_gate_clks,
+	.nr_gate_clks		= ARRAY_SIZE(hsi1_gate_clks),
+	.nr_clk_ids		= CLKS_NR_HSI1,
+	.clk_regs		= hsi1_clk_regs,
+	.nr_clk_regs		= ARRAY_SIZE(hsi1_clk_regs),
+	.clk_name		= "bus",
+};
+
 /* ---- CMU_HSI2 ------------------------------------------------------------ */
 
 /* Register Offset definitions for CMU_HSI2 (0x14400000) */
@@ -4728,6 +4851,9 @@ static const struct of_device_id gs101_cmu_of_match[] = {
 	}, {
 		.compatible = "google,gs101-cmu-hsi0",
 		.data = &hsi0_cmu_info,
+	}, {
+		.compatible = "google,gs101-cmu-hsi1",
+		.data = &hsi1_cmu_info,
 	}, {
 		.compatible = "google,gs101-cmu-hsi2",
 		.data = &hsi2_cmu_info,
