@@ -32,6 +32,10 @@
  *              the same edges in the same order, 1 s apart, to tell which
  *              one disturbs other links (UFS errors in M2.5)
  *   pda_off    ap2cp-pda-active low, the level the bootloader leaves
+ *   wake_on    ap2cp-wakeup high, then 5 ms, as Google's driver does before
+ *              the link when the modem booted over SPI (S5123): its
+ *              bootloader brings its PCIe side up only then
+ *   wake_off   ap2cp-wakeup low
  *              (cp_on, cp_off and pda_off only while the "modem" child node is available; when
  *              it is disabled, the modem driver owns the lines)
  *   link_up    PHY out of isolation, PHY and controller setup, PERST#
@@ -1632,7 +1636,8 @@ static ssize_t cp_ctl_write(struct file *file, const char __user *ubuf,
 
 	mutex_lock(&cp->lock);
 	if (!strcmp(cmd, "cp_on") || !strcmp(cmd, "cp_off") ||
-	    !strcmp(cmd, "cp_off_slow") || !strcmp(cmd, "pda_off")) {
+	    !strcmp(cmd, "cp_off_slow") || !strcmp(cmd, "pda_off") ||
+	    !strcmp(cmd, "wake_on") || !strcmp(cmd, "wake_off")) {
 		if (!cp->has_lines) {
 			ret = -ENODEV;	/* the modem driver owns the lines */
 		} else if (!strcmp(cmd, "cp_on")) {
@@ -1643,6 +1648,11 @@ static ssize_t cp_ctl_write(struct file *file, const char __user *ubuf,
 		} else if (!strcmp(cmd, "cp_off_slow")) {
 			cp_link_down(cp);
 			cp_power_off(cp, CP_OFF_SLOW_GAP_MS);
+		} else if (!strcmp(cmd, "wake_on")) {
+			/* s5100_poweron_pcie(boot_on = false): 5 ms before the link */
+			cp_line(cp, CP_WAKEUP, 1, 5);
+		} else if (!strcmp(cmd, "wake_off")) {
+			cp_line(cp, CP_WAKEUP, 0, 0);
 		} else if (cp->cp_powered) {
 			ret = -EBUSY;	/* pda_off is for a modem that is off */
 		} else {
