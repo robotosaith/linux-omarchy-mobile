@@ -190,6 +190,26 @@ static const char * const cp_input_names[CP_NUM_INPUTS] = {
 	"cp2ap-cp-wrst", "cp2ap-ps-hold", "cp2ap-wakeup", "cp2ap-phone-active",
 };
 
+/*
+ * The S5123 (gs101) has no warm-reset lines: Google's driver leaves them out
+ * of its device tree and its sequence skips them. Optional, NULL if absent.
+ */
+static bool cp_line_optional(bool input, unsigned int i)
+{
+	return input ? i == CP_IN_WRST_N : i == CP_WRST_N || i == CP_PM_WRST_N;
+}
+
+static struct gpio_desc *cp_get_line(struct device *dev, struct fwnode_handle *modem,
+				     bool input, unsigned int i)
+{
+	const char *name = input ? cp_input_names[i] : cp_output_names[i];
+	struct gpio_desc *d = devm_fwnode_gpiod_get(dev, modem, name, GPIOD_ASIS, name);
+
+	if (IS_ERR(d) && PTR_ERR(d) == -ENOENT && cp_line_optional(input, i))
+		return NULL;
+	return d;
+}
+
 #define CP_ROOT_WIN_REGS	7	/* ARRAY_SIZE(cp_root_win_offs) */
 
 struct gs201_pcie_cp {
@@ -1669,12 +1689,20 @@ static int cp_status_show(struct seq_file *s, void *unused)
 	mutex_lock(&cp->lock);
 	if (!cp->has_lines)
 		seq_puts(s, "modem lines: owned by the modem driver\n");
-	for (i = 0; cp->has_lines && i < CP_NUM_OUTPUTS; i++)
-		seq_printf(s, "%-20s %d\n", cp_output_names[i],
-			   gpiod_get_raw_value_cansleep(cp->out[i]));
-	for (i = 0; cp->has_lines && i < CP_NUM_INPUTS; i++)
-		seq_printf(s, "%-20s %d\n", cp_input_names[i],
-			   gpiod_get_raw_value_cansleep(cp->in[i]));
+	for (i = 0; cp->has_lines && i < CP_NUM_OUTPUTS; i++) {
+		if (!cp->out[i])
+			seq_printf(s, "%-20s -\n", cp_output_names[i]);
+		else
+			seq_printf(s, "%-20s %d\n", cp_output_names[i],
+				   gpiod_get_raw_value_cansleep(cp->out[i]));
+	}
+	for (i = 0; cp->has_lines && i < CP_NUM_INPUTS; i++) {
+		if (!cp->in[i])
+			seq_printf(s, "%-20s -\n", cp_input_names[i]);
+		else
+			seq_printf(s, "%-20s %d\n", cp_input_names[i],
+				   gpiod_get_raw_value_cansleep(cp->in[i]));
+	}
 	seq_printf(s, "%-20s %d\n", "perst (asserted)",
 		   gpiod_get_value_cansleep(cp->perst));
 	regmap_read(cp->pmu, cp->pmu_offset, &iso);
@@ -1740,6 +1768,8 @@ static void cp_watch_lines(struct gs201_pcie_cp *cp)
 	for (i = 0; i < CP_NUM_INPUTS; i++) {
 		cp->watch[i].cp = cp;
 		cp->watch[i].line = i;
+		if (!cp->in[i])
+			continue;
 		irq = gpiod_to_irq(cp->in[i]);
 		if (irq < 0) {
 			dev_warn(cp->dev, "%s: no interrupt (%d), not watched\n",
@@ -1783,16 +1813,14 @@ static int cp_get_lines(struct gs201_pcie_cp *cp)
 
 	/* All lines as the bootloader left them until a step drives them. */
 	for (i = 0; i < CP_NUM_OUTPUTS; i++) {
-		cp->out[i] = devm_fwnode_gpiod_get(dev, modem, cp_output_names[i],
-						   GPIOD_ASIS, cp_output_names[i]);
+		cp->out[i] = cp_get_line(dev, modem, false, i);
 		if (IS_ERR(cp->out[i])) {
 			ret = PTR_ERR(cp->out[i]);
 			goto err_node;
 		}
 	}
 	for (i = 0; i < CP_NUM_INPUTS; i++) {
-		cp->in[i] = devm_fwnode_gpiod_get(dev, modem, cp_input_names[i],
-						  GPIOD_ASIS, cp_input_names[i]);
+		cp->in[i] = cp_get_line(dev, modem, true, i);
 		if (IS_ERR(cp->in[i])) {
 			ret = PTR_ERR(cp->in[i]);
 			goto err_node;
