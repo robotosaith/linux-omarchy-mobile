@@ -33,6 +33,13 @@ static int _rmem_count;
 static struct cp_reserved_mem _cp_rmem[MAX_CP_RMEM];
 
 #if defined(MODULE)
+/* The modem node under the PCIe link: the S5300 (gs201) or the S5123 (gs101) */
+static const struct of_device_id cp_modem_nodes[] = {
+	{ .compatible = "samsung,s5300-modem" },
+	{ .compatible = "samsung,s5123-modem" },
+	{ }
+};
+
 /*
  * The regions: this node's memory-region in Google's device tree; on gs201
  * boards here, that of the modem node under the PCIe link, where the board
@@ -44,7 +51,7 @@ static struct device_node *cp_rmem_node(struct device_node *np)
 
 	if (of_property_present(np, "memory-region"))
 		return of_node_get(np);
-	modem = of_find_compatible_node(NULL, NULL, "samsung,s5300-modem");
+	modem = of_find_matching_node(NULL, cp_modem_nodes);
 	return modem ?: of_node_get(np);
 }
 
