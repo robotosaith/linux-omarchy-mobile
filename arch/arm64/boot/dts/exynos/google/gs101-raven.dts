@@ -144,6 +144,9 @@
 &pcie_0 {
 	/* the modem's MSI page: MSIs land here, as on stock */
 	memory-region = <&cp_msi_mem>;
+	/* stock's vreg1 and vreg2 (board overlay 6) */
+	vdd085-supply = <&{/firmware/power-management/pmic-1/regulators/ldo16m}>;
+	vdd18-supply = <&{/firmware/power-management/pmic-1/regulators/ldo18m}>;
 
 	modem {
 		compatible = "samsung,s5123-modem";
