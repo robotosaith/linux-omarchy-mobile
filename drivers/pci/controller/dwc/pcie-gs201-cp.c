@@ -221,6 +221,8 @@ struct gs201_pcie_cp {
 	struct dw_pcie pci;		/* only for the DBI helpers */
 	void __iomem *elbi;
 	void __iomem *cfg;
+	resource_size_t cfg_phys, cfg_size;	/* the config window, for gs101's iATU */
+	bool secure_atu;			/* gs201: EL3 programs the iATU */
 	struct regmap *sysreg;
 	u32 sysreg_offset;
 	struct clk_bulk_data *clks;
@@ -1152,9 +1154,65 @@ static int cp_link_up(struct gs201_pcie_cp *cp, unsigned int speed)
 	return 0;
 }
 
+/*
+ * gs101: the outbound iATU is Linux's (stock's use-secure-atu is "false"),
+ * as Google's prog_viewport_cfg0() and prog_viewport_mem_outbound(): region
+ * 0 the config window to bus 1, region 1 the memory window from "ranges".
+ * The unrolled iATU sits at DBI + 0x300000, 0x200 per outbound region.
+ */
+#define CP_IATU_OB(r, off)	(0x300000 + (r) * 0x200 + (off))
+#define CP_IATU_CR1		0x00
+#define CP_IATU_CR2		0x04
+#define CP_IATU_LBASE		0x08
+#define CP_IATU_UBASE		0x0c
+#define CP_IATU_LIMIT		0x10
+#define CP_IATU_LTARGET		0x14
+#define CP_IATU_UTARGET		0x18
+#define CP_IATU_TYPE_MEM	0x0
+#define CP_IATU_TYPE_CFG0	0x4
+#define CP_IATU_ENABLE		BIT(31)
+
+static void cp_iatu_region(struct gs201_pcie_cp *cp, unsigned int r, u32 type,
+			   u64 base, u64 size, u64 target)
+{
+	struct dw_pcie *pci = &cp->pci;
+
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_CR1), type);
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_LBASE), lower_32_bits(base));
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_UBASE), upper_32_bits(base));
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_LIMIT), lower_32_bits(base + size - 1));
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_LTARGET), lower_32_bits(target));
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_UTARGET), upper_32_bits(target));
+	dw_pcie_writel_dbi(pci, CP_IATU_OB(r, CP_IATU_CR2), CP_IATU_ENABLE);
+}
+
+static int cp_linux_atu(struct gs201_pcie_cp *cp)
+{
+	struct resource_entry *mem =
+		resource_list_first_type(&cp->bridge->windows, IORESOURCE_MEM);
+
+	if (!mem)
+		return -EINVAL;
+	/* bus 1, device 0, function 0: the modem behind the root port */
+	cp_iatu_region(cp, 0, CP_IATU_TYPE_CFG0, cp->cfg_phys, cp->cfg_size,
+		       1 << 24);
+	cp_iatu_region(cp, 1, CP_IATU_TYPE_MEM, mem->res->start,
+		       resource_size(mem->res), mem->res->start - mem->offset);
+	dev_info(cp->dev, "iATU: config %pa (%pa bytes) to bus 1; memory %pR to PCI %#llx\n",
+		 &cp->cfg_phys, &cp->cfg_size, mem->res,
+		 (u64)(mem->res->start - mem->offset));
+	cp->atu_done = true;
+	cp_cfg_allow(cp, true, true);
+
+	return 0;
+}
+
 static int cp_secure_atu(struct gs201_pcie_cp *cp)
 {
 	struct arm_smccc_res res;
+
+	if (!cp->secure_atu)
+		return cp_linux_atu(cp);
 
 	arm_smccc_smc(CP_SMC_SECURE_ATU_SETUP, 0, 0, 0, 0, 0, 0, 0, &res);
 	dev_info(cp->dev, "secure ATU SMC: %#lx\n", res.a0);
@@ -1888,9 +1946,14 @@ static int gs201_pcie_cp_probe(struct platform_device *pdev)
 	cp->pci.dev = dev;
 	cp->pci.ops = &cp_dw_ops;
 
-	cp->cfg = devm_platform_ioremap_resource_byname(pdev, "config");
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "config");
+	cp->cfg = devm_ioremap_resource(dev, res);
 	if (IS_ERR(cp->cfg))
 		return PTR_ERR(cp->cfg);
+	cp->cfg_phys = res->start;
+	cp->cfg_size = resource_size(res);
+	/* gs101's stock node says use-secure-atu = "false"; gs201's EL3 owns it */
+	cp->secure_atu = !of_device_is_compatible(np, "google,gs101-pcie-cp");
 
 	cp->sysreg = syscon_regmap_lookup_by_phandle_args(np, "samsung,sysreg",
 							   1, &cp->sysreg_offset);
