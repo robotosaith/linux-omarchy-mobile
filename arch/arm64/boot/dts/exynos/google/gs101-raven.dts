@@ -154,3 +154,25 @@
 		cp2ap-phone-active-gpios = <&gpa8 5 GPIO_ACTIVE_HIGH>;
 	};
 };
+
+/*
+ * The modem's first boot stage (the BOOT entry of modem.bin, under 128 KiB)
+ * goes over USI9's SPI before its PCIe side comes up, as on stock (board
+ * overlay 6: native chip select, 2.15 MHz). Disabled until the
+ * modem-spi-test bring-up overlay.
+ */
+&usi9 {
+	samsung,mode = <USI_MODE_SPI>;
+};
+
+&spi_9 {
+	pinctrl-0 = <&spi9_bus &spi9_cs_func>;
+	pinctrl-names = "default";
+	num-cs = <1>;
+
+	cpboot-spi@0 {
+		compatible = "samsung,exynos-cp-spi";
+		reg = <0>;
+		spi-max-frequency = <2150000>;
+	};
+};
