@@ -1711,11 +1711,27 @@
 			};
 		};
 
+		cmu_hsi1: clock-controller@11800000 {
+			compatible = "google,gs101-cmu-hsi1";
+			reg = <0x11800000 0x8000>;
+			#clock-cells = <1>;
+			clocks = <&ext_24_5m>,
+				 <&cmu_top CLK_DOUT_CMU_HSI1_BUS>,
+				 <&cmu_top CLK_DOUT_CMU_HSI1_PCIE>;
+			clock-names = "oscclk", "bus", "pcie";
+			samsung,sysreg = <&sysreg_hsi1>;
+		};
+
+		sysreg_hsi1: syscon@11820000 {
+			compatible = "google,gs101-hsi1-sysreg", "syscon";
+			reg = <0x11820000 0x10000>;
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_SYSREG_HSI1_PCLK>;
+		};
+
 		pinctrl_hsi1: pinctrl@11840000 {
 			compatible = "google,gs101-pinctrl";
 			reg = <0x11840000 0x00001000>;
-			/* TODO: update once support for this CMU exists */
-			clocks = <0>;
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_GPIO_HSI1_PCLK>;
 			clock-names = "pclk";
 			interrupts = <GIC_SPI 471 IRQ_TYPE_LEVEL_HIGH 0>;
 		};
