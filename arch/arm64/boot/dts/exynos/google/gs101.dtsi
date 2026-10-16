@@ -214,6 +214,70 @@
 		};
 	};
 
+	/*
+	 * Google's gs101 GPU levels (gpu_dvfs_table_v2, capped at their
+	 * gpu_dvfs_max_freq of 800 MHz): shader clock, with the L2 clock it is
+	 * paired with. No voltages: ACPM sets them with each rate.
+	 */
+	gpu_opp_table: opp-table-gpu {
+		compatible = "operating-points-v2";
+
+		opp-151000000 {
+			opp-hz = /bits/ 64 <151000000>;
+			l2-hz = <302000000>;
+		};
+
+		opp-202000000 {
+			opp-hz = /bits/ 64 <202000000>;
+			l2-hz = <302000000>;
+		};
+
+		opp-251000000 {
+			opp-hz = /bits/ 64 <251000000>;
+			l2-hz = <434000000>;
+		};
+
+		opp-302000000 {
+			opp-hz = /bits/ 64 <302000000>;
+			l2-hz = <434000000>;
+		};
+
+		opp-351000000 {
+			opp-hz = /bits/ 64 <351000000>;
+			l2-hz = <603000000>;
+		};
+
+		opp-400000000 {
+			opp-hz = /bits/ 64 <400000000>;
+			l2-hz = <603000000>;
+		};
+
+		opp-471000000 {
+			opp-hz = /bits/ 64 <471000000>;
+			l2-hz = <603000000>;
+		};
+
+		opp-510000000 {
+			opp-hz = /bits/ 64 <510000000>;
+			l2-hz = <750000000>;
+		};
+
+		opp-572000000 {
+			opp-hz = /bits/ 64 <572000000>;
+			l2-hz = <750000000>;
+		};
+
+		opp-701000000 {
+			opp-hz = /bits/ 64 <701000000>;
+			l2-hz = <885000000>;
+		};
+
+		opp-762000000 {
+			opp-hz = /bits/ 64 <762000000>;
+			l2-hz = <996000000>;
+		};
+	};
+
 	cpucl0_opp_table: opp-table-0 {
 		compatible = "operating-points-v2";
 		opp-shared;
@@ -1926,11 +1990,11 @@
 		gpu: gpu@1c500000 {
 			compatible = "google,gs101-mali", "arm,mali-valhall-jm";
 			reg = <0x1c500000 0x5000>;
-			/*
-			 * TODO: placeholder until a CMU_G3D driver exists. ABL
-			 * leaves the G3D clock running; this is not that clock.
-			 */
-			clocks = <&ext_24_5m>;
+			/* The shader (core) and L2 clocks, scaled by the APM firmware */
+			clocks = <&acpm_ipc GS101_CLK_ACPM_DVFS_G3D>,
+				 <&acpm_ipc GS101_CLK_ACPM_DVFS_G3DL2>;
+			clock-names = "core", "l2";
+			operating-points-v2 = <&gpu_opp_table>;
 			interrupt-names = "job", "mmu", "gpu";
 			interrupts = <GIC_SPI 420 IRQ_TYPE_LEVEL_HIGH 0>,
 				     <GIC_SPI 421 IRQ_TYPE_LEVEL_HIGH 0>,
