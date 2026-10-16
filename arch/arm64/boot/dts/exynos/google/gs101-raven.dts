@@ -617,4 +617,10 @@
 		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
 		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
 	};
+ * GSA's pin controller belongs to the secure world: a read of its registers
+ * from Linux raises a synchronous external abort (its debugfs pin list
+ * oopsed and once hung the phone). Nothing here uses its one bank (gps3).
+ */
+&pinctrl_gsactrl {
+	status = "disabled";
 };
