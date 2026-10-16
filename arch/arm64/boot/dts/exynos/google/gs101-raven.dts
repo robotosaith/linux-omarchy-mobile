@@ -25,8 +25,11 @@
 		 * ABL appends its own arguments (console=null among them), so a
 		 * panic is silent: panic=10 reboots instead of hanging. init hands
 		 * over to the Arch root on userdata when it finds one.
+		 * mem_sleep_default=s2idle: the firmware offers PSCI system
+		 * suspend, so "mem" would otherwise mean "deep", which needs a
+		 * PMU sleep sequence the kernel doesn't have yet.
 		 */
-		bootargs = "console=tty0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init";
+		bootargs = "console=tty0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init mem_sleep_default=s2idle";
 	};
 };
 
