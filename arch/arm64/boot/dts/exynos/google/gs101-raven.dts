@@ -142,3 +142,25 @@
 		spi9 = &spi_9;
 	};
 };
+
+/*
+ * Modem: Samsung S5123 on PCIe GEN4A_0 (HSI1), with its control lines from
+ * stock's cpif node (board overlay 6). Raw levels, as Google's CPIF drives
+ * them. The S5123 has no warm-reset lines. The link driver (pcie-gs201-cp)
+ * drives these while pcie_0 is enabled, which only the modem-link-test
+ * bring-up overlay does; the shared memory comes with the modem driver
+ * (MODEM-PLAN.md M3).
+ */
+&pcie_0 {
+	modem {
+		compatible = "samsung,s5123-modem";
+		ap2cp-pda-active-gpios = <&gph1 1 GPIO_ACTIVE_HIGH>;
+		ap2cp-cp-pwr-on-gpios = <&gph1 0 GPIO_ACTIVE_HIGH>;
+		ap2cp-nreset-gpios = <&gph1 3 GPIO_ACTIVE_HIGH>;
+		ap2cp-wakeup-gpios = <&gph0 2 GPIO_ACTIVE_HIGH>;
+		ap2cp-dump-noti-gpios = <&gph0 3 GPIO_ACTIVE_HIGH>;
+		cp2ap-ps-hold-gpios = <&gpa9 5 GPIO_ACTIVE_HIGH>;
+		cp2ap-wakeup-gpios = <&gpa8 4 GPIO_ACTIVE_HIGH>;
+		cp2ap-phone-active-gpios = <&gpa8 5 GPIO_ACTIVE_HIGH>;
+	};
+};
