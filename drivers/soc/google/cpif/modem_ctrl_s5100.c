@@ -2252,8 +2252,15 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 
 	of_node_put(lines);
 
-	/* validate */
+	/*
+	 * validate: the S5123 (gs101) has no warm-reset lines; Google's driver
+	 * leaves them out of its device tree, and setting or reading an absent
+	 * line does nothing.
+	 */
 	for (i = 0; i < CP_GPIO_MAX; i++) {
+		if (i == CP_GPIO_AP2CP_CP_WRST_N || i == CP_GPIO_CP2AP_CP_WRST_N ||
+		    i == CP_GPIO_AP2CP_PM_WRST_N)
+			continue;
 		if (!mc->cp_gpio[i].valid) {
 			mif_err("Missing some of GPIOs\n");
 			return -EINVAL;

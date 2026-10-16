@@ -617,7 +617,9 @@ bool mif_gpio_set_value(struct cpif_gpio *gpio, int value, unsigned int delay_ms
 	int dup = 0;
 
 	if (!gpio->valid) {
-		mif_err("SET GPIO %s is not valid\n", gpio->label);
+		/* the S5123's absent warm-reset lines: nothing to set */
+		if (!gpio->label || !strstr(gpio->label, "WRST"))
+			mif_err("SET GPIO %s is not valid\n", gpio->label);
 		return false;
 	}
 
