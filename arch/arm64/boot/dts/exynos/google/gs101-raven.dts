@@ -72,3 +72,12 @@
 
 	status = "okay";
 };
+
+/*
+ * GSA's pin controller belongs to the secure world: a read of its registers
+ * from Linux raises a synchronous external abort (its debugfs pin list
+ * oopsed and once hung the phone). Nothing here uses its one bank (gps3).
+ */
+&pinctrl_gsactrl {
+	status = "disabled";
+};
