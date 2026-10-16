@@ -51,6 +51,7 @@
 #include <linux/of_graph.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
@@ -1386,6 +1387,14 @@ static int gs_decon_probe(struct platform_device *pdev)
 	 */
 	if (fbdev)
 		drm_client_setup(&dc->drm, NULL);
+
+	/*
+	 * Without an fbdev console, a VT switch around system sleep has
+	 * nothing to show, and it costs the compositor its input devices:
+	 * logind takes the session away and gives it back, and the key press
+	 * that woke the phone is lost with the device it was queued on.
+	 */
+	pm_vt_switch_required(dev, fbdev);
 	dev_info(dev, "flip-only KMS on DECON0, %ux%u, up to %u Hz (at %u Hz)\n",
 		 dc->width, dc->height, dc->max_hz, dc->hz);
 
@@ -1403,6 +1412,7 @@ static void gs_decon_remove(struct platform_device *pdev)
 	struct gs_decon *dc = platform_get_drvdata(pdev);
 
 	if (dc->kms) {
+		pm_vt_switch_unregister(&pdev->dev);
 		dc->going_down = true;
 		drm_dev_unplug(&dc->drm);
 		drm_atomic_helper_shutdown(&dc->drm);
