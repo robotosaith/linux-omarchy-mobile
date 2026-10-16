@@ -9,6 +9,7 @@ ccflags-y += -DCPIF_WAKEPKT_SET_MARK=0x80000000
 ccflags-y += -DCONFIG_OPTION_REGION=\"\"
 
 obj-$(CONFIG_SHM_IPC) += shm_ipc.o
+obj-$(CONFIG_BOOT_DEVICE_SPI) += boot_device_spi.o
 
 obj-$(CONFIG_EXYNOS_MODEM_IF) += cpif.o
 cpif-y += modem_main.o modem_variation.o
