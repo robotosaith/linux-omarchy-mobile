@@ -62,6 +62,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/bitfield.h>
 #include <linux/debugfs.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/io.h>
@@ -198,6 +199,8 @@ struct gs201_pcie_cp {
 	void __iomem *cfg;
 	struct regmap *sysreg;
 	u32 sysreg_offset;
+	struct clk_bulk_data *clks;
+	int num_clks;
 	struct regmap *pmu;
 	u32 pmu_offset;
 	struct phy *phy;
@@ -1819,6 +1822,16 @@ static int gs201_pcie_cp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	cp->dev = dev;
 	mutex_init(&cp->lock);
+
+	/*
+	 * gs101 has a CMU_HSI1 driver, which gates the controller's clocks as
+	 * unused after boot: take them before anything touches the controller.
+	 * On gs201 the node lists none, and the bootloader's clocks stay on.
+	 */
+	ret = devm_clk_bulk_get_all_enabled(dev, &cp->clks);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "controller clocks\n");
+	cp->num_clks = ret;
 	raw_spin_lock_init(&cp->cfg_lock);
 	raw_spin_lock_init(&cp->dbi_lock);
 	spin_lock_init(&cp->event_lock);
@@ -1968,6 +1981,7 @@ static void gs201_pcie_cp_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs201_pcie_cp_of_match[] = {
+	{ .compatible = "google,gs101-pcie-cp" },	/* same GEN4A_0 wrapper and PHY */
 	{ .compatible = "google,gs201-pcie-cp" },
 	{ }
 };
