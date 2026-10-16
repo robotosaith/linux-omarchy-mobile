@@ -43,11 +43,14 @@ enum panfrost_drv_comp_bits {
  * @GPU_PM_VREG_OFF: Allow turning off regulators during system suspend
  * @GPU_PM_RT: Allow disabling clocks and asserting the reset control during
  *  system runtime suspend
+ * @GPU_PM_FW_DVFS: Firmware sets the GPU voltages with the clock rates, so
+ *  devfreq sets rates only, whatever the number of supplies
  */
 enum panfrost_gpu_pm {
 	GPU_PM_CLK_DIS,
 	GPU_PM_VREG_OFF,
-	GPU_PM_RT
+	GPU_PM_RT,
+	GPU_PM_FW_DVFS,
 };
 
 /**
@@ -137,6 +140,7 @@ struct panfrost_device {
 	struct clk *clock;
 	struct clk *bus_clock;
 	struct clk *bus_ace_clock;
+	struct clk *l2_clock;
 	struct regulator_bulk_data *regulators;
 	struct reset_control *rstc;
 	/* pm_domains for devices with more than one. */

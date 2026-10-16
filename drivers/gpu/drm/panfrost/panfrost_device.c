@@ -81,7 +81,18 @@ static int panfrost_clk_init(struct panfrost_device *pfdev)
 	if (err)
 		goto disable_bus_clock;
 
+	/* A separately scaled L2 clock, set per OPP by devfreq */
+	pfdev->l2_clock = devm_clk_get_optional(pfdev->base.dev, "l2");
+	if (IS_ERR(pfdev->l2_clock)) {
+		err = PTR_ERR(pfdev->l2_clock);
+		dev_err(pfdev->base.dev, "get l2_clock failed %d\n", err);
+		goto disable_bus_ace_clock;
+	}
+
 	return 0;
+
+disable_bus_ace_clock:
+	clk_disable_unprepare(pfdev->bus_ace_clock);
 
 disable_bus_clock:
 	clk_disable_unprepare(pfdev->bus_clock);

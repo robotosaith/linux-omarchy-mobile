@@ -5,6 +5,7 @@
 #include <linux/devfreq.h>
 #include <linux/devfreq_cooling.h>
 #include <linux/nvmem-consumer.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
 
@@ -28,6 +29,31 @@ static void panfrost_devfreq_update_utilization(struct panfrost_devfreq *pfdevfr
 	pfdevfreq->time_last_update = now;
 }
 
+/*
+ * Set the L2 clock to the OPP's "l2-hz", if the GPU has one. The OPP core
+ * scales a single clock through devfreq, so the L2 rate rides along here.
+ */
+static int panfrost_devfreq_set_l2(struct panfrost_device *pfdev,
+				   struct dev_pm_opp *opp)
+{
+	struct device_node *np;
+	u32 rate;
+	int err;
+
+	if (!pfdev->l2_clock)
+		return 0;
+
+	np = dev_pm_opp_get_of_node(opp);
+	if (!np)
+		return 0;
+	err = of_property_read_u32(np, "l2-hz", &rate);
+	of_node_put(np);
+	if (err)
+		return 0;
+
+	return clk_set_rate(pfdev->l2_clock, rate);
+}
+
 static int panfrost_devfreq_target(struct device *dev, unsigned long *freq,
 				   u32 flags)
 {
@@ -38,7 +64,11 @@ static int panfrost_devfreq_target(struct device *dev, unsigned long *freq,
 	opp = devfreq_recommended_opp(dev, freq, flags);
 	if (IS_ERR(opp))
 		return PTR_ERR(opp);
+
+	err = panfrost_devfreq_set_l2(pfdev, opp);
 	dev_pm_opp_put(opp);
+	if (err)
+		return err;
 
 	err = dev_pm_opp_set_rate(dev, *freq);
 	if (!err)
@@ -126,8 +156,9 @@ int panfrost_devfreq_init(struct panfrost_device *pfdev)
 	struct thermal_cooling_device *cooling;
 	struct panfrost_devfreq *pfdevfreq = &pfdev->pfdevfreq;
 	unsigned long freq = ULONG_MAX;
+	bool fw_dvfs = pfdev->comp->pm_features & BIT(GPU_PM_FW_DVFS);
 
-	if (pfdev->comp->num_supplies > 1) {
+	if (pfdev->comp->num_supplies > 1 && !fw_dvfs) {
 		/*
 		 * GPUs with more than 1 supply require platform-specific handling:
 		 * continue without devfreq
@@ -140,7 +171,7 @@ int panfrost_devfreq_init(struct panfrost_device *pfdev)
 	if (ret)
 		return ret;
 
-	ret = devm_pm_opp_set_regulators(dev, pfdev->comp->supply_names);
+	ret = fw_dvfs ? 0 : devm_pm_opp_set_regulators(dev, pfdev->comp->supply_names);
 	if (ret) {
 		/* Continue if the optional regulator is missing */
 		if (ret != -ENODEV) {
@@ -183,7 +214,9 @@ int panfrost_devfreq_init(struct panfrost_device *pfdev)
 	 * Set the recommend OPP this will enable and configure the regulator
 	 * if any and will avoid a switch off by regulator_late_cleanup()
 	 */
-	ret = dev_pm_opp_set_opp(dev, opp);
+	ret = panfrost_devfreq_set_l2(pfdev, opp);
+	if (!ret)
+		ret = dev_pm_opp_set_opp(dev, opp);
 	dev_pm_opp_put(opp);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "Couldn't set recommended OPP\n");
