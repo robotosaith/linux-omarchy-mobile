@@ -627,3 +627,10 @@
 &pinctrl_gsactrl {
 	status = "disabled";
 };
+
+/ {
+	aliases {
+		/* the modem's first boot stage: cpboot_spi_bus_num = 9 */
+		spi9 = &spi_9;
+	};
+};
