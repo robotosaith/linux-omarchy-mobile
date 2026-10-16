@@ -94,6 +94,16 @@ config MODEM_IF_QOS
 
 	  If unsure, say N.
 
+config BOOT_DEVICE_SPI
+	tristate "Load the modem's first boot stage over SPI"
+	depends on SPI
+	help
+	  The S5123 (Pixel 6, gs101) takes its first boot stage over SPI before
+	  the PCIe link comes up: the modem daemon hands the image to CPIF, which
+	  writes it through this SPI device. The device tree's
+	  cpboot_spi_bus_num names the bus. The S5300 boots over PCIe alone and
+	  doesn't need it.
+
 config SHM_IPC
 	tristate "Shared-memory regions for the modem"
 	default EXYNOS_MODEM_IF
