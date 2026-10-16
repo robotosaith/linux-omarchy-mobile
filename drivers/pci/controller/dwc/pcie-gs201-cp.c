@@ -697,21 +697,20 @@ static int cp_msi_setup(struct gs201_pcie_cp *cp)
 			/*
 			 * gs101: one interrupt for the controller's events and its
 			 * MSIs (stock: use-msi, no separated-msi). The controller
-			 * handler dispatches them, as Google's does.
+			 * handler dispatches them, as Google's does. A negative
+			 * msi_irq[0] gets the domain and its irq_chip without a
+			 * chained handler.
 			 */
-			pp->irq_mask[0] = ~0;
-			ret = dw_pcie_allocate_domains(pp);
-			if (ret)
-				return ret;
+			pp->msi_irq[0] = -ENXIO;
 			cp->msi_combined = true;
 		} else {
 			if (ret < 0)
 				return ret;
 			pp->msi_irq[0] = ret;
-			ret = dw_pcie_msi_host_init(pp);	/* handlers on, enabled */
-			if (ret)
-				return ret;
 		}
+		ret = dw_pcie_msi_host_init(pp);	/* handlers on, enabled */
+		if (ret)
+			return ret;
 		for (i = 0; i < CP_MSI_QUEUES; i++)
 			if (cp->queue[i].irq > 0)
 				enable_irq(cp->queue[i].irq);
