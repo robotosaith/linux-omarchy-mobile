@@ -2138,11 +2138,19 @@ static void s5100_get_ops(struct modem_ctl *mc)
 	mc->ops.resume = resume_cp;
 }
 
+/* The modem node under the PCIe link: the S5300 (gs201) or the S5123 (gs101) */
+static const struct of_device_id cp_modem_nodes[] = {
+	{ .compatible = "samsung,s5300-modem" },
+	{ .compatible = "samsung,s5123-modem" },
+	{ }
+};
+
 /*
  * The modem's lines: in Google's device tree they are in this node; on
- * gs201 boards here they are in the modem node under the PCIe link
- * ("samsung,s5300-modem"), which the link driver uses while CPIF is not
- * running and which an overlay disables for it when CPIF runs. That node
+ * gs201 and gs101 boards here they are in the modem node under the PCIe
+ * link ("samsung,s5300-modem", "samsung,s5123-modem"), which the link
+ * driver uses while CPIF is not running and which an overlay disables for
+ * it when CPIF runs. That node
  * is used whatever its status; this node's own lines win.
  */
 static struct device_node *cp_lines_node(struct device_node *np)
@@ -2151,7 +2159,7 @@ static struct device_node *cp_lines_node(struct device_node *np)
 
 	if (of_property_present(np, "ap2cp-wakeup-gpios"))
 		return of_node_get(np);
-	modem = of_find_compatible_node(NULL, NULL, "samsung,s5300-modem");
+	modem = of_find_matching_node(NULL, cp_modem_nodes);
 	return modem ?: of_node_get(np);
 }
 
