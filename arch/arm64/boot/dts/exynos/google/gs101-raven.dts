@@ -644,8 +644,14 @@
  * (MODEM-PLAN.md M3).
  */
 &pcie_0 {
+	/* the modem's MSI page: MSIs land here, as on stock */
+	memory-region = <&cp_msi_mem>;
+
 	modem {
 		compatible = "samsung,s5123-modem";
+		/* stock's cp_shmem order: IPC, MSI, PKTPROC, PKTPROC_UL */
+		memory-region = <&cp_ipc_mem>, <&cp_msi_mem>,
+				<&cp_pktproc_mem>, <&cp_pktproc_ul_mem>;
 		ap2cp-pda-active-gpios = <&gph1 1 GPIO_ACTIVE_HIGH>;
 		ap2cp-cp-pwr-on-gpios = <&gph1 0 GPIO_ACTIVE_HIGH>;
 		ap2cp-nreset-gpios = <&gph1 3 GPIO_ACTIVE_HIGH>;
