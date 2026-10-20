@@ -304,3 +304,132 @@
 		};
 	};
 };
+
+/ {
+	/* the amplifiers' VP comes straight from the battery (V_SYS) */
+	amp_vp: regulator-amp-vp {
+		compatible = "regulator-fixed";
+		regulator-name = "amp-vp";
+		regulator-min-microvolt = <4200000>;
+		regulator-max-microvolt = <4200000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};
+
+/*
+ * The speaker amplifiers: two CS35L41 on SPI 13 (USI13), as in stock's raven
+ * device tree. Chip select 0 is the top speaker (earpiece), 1 the bottom
+ * loudspeaker. Their audio comes from the AoC's TDM 0 port; the nodes stay
+ * disabled until a sound card describes that link.
+ */
+&usi13 {
+	samsung,mode = <USI_MODE_SPI>;
+};
+
+&spi_13 {
+	pinctrl-0 = <&spi13_bus &amp_miso &amp_top_cs &amp_bottom_cs>;
+	cs-gpios = <&gpp25 3 GPIO_ACTIVE_LOW>, <&gpp1 0 GPIO_ACTIVE_LOW>;
+	num-cs = <2>;
+
+	amp_top: amplifier@0 {
+		compatible = "cirrus,cs35l41";
+		reg = <0>;
+		#sound-dai-cells = <1>;
+		spi-max-frequency = <25000000>;
+		interrupts-extended = <&gpa6 3 IRQ_TYPE_LEVEL_HIGH>;
+		reset-gpios = <&gpp16 3 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&amp_top_irq &amp_top_rst>;
+		pinctrl-names = "default";
+		VA-supply = <&s2mpg11_bucka>;
+		VP-supply = <&amp_vp>;
+		sound-name-prefix = "Top";
+		cirrus,subsystem-id = "raven";
+		cirrus,boost-type = <0>;
+		cirrus,boost-peak-milliamp = <3500>;
+		cirrus,boost-ind-nanohenry = <1000>;
+		cirrus,boost-cap-microfarad = <30>;
+		cirrus,asp-sdout-hiz = <3>;
+		/* the stock protection firmware does not survive hibernation */
+		cirrus,dsp-no-hibernate;
+		/* GPIO2 = push-pull interrupt, active high */
+		cirrus,gpio2-src-select = <5>;
+		cirrus,gpio2-output-enable;
+		status = "disabled";
+	};
+
+	amp_bottom: amplifier@1 {
+		compatible = "cirrus,cs35l41";
+		reg = <1>;
+		#sound-dai-cells = <1>;
+		spi-max-frequency = <25000000>;
+		interrupts-extended = <&gpa9 6 IRQ_TYPE_LEVEL_HIGH>;
+		reset-gpios = <&gpp23 7 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&amp_bottom_irq &amp_bottom_rst>;
+		pinctrl-names = "default";
+		VA-supply = <&s2mpg11_bucka>;
+		VP-supply = <&amp_vp>;
+		sound-name-prefix = "Bottom";
+		cirrus,subsystem-id = "raven";
+		cirrus,boost-type = <0>;
+		cirrus,boost-peak-milliamp = <3500>;
+		cirrus,boost-ind-nanohenry = <1000>;
+		cirrus,boost-cap-microfarad = <30>;
+		cirrus,asp-sdout-hiz = <3>;
+		cirrus,dsp-no-hibernate;
+		cirrus,gpio2-src-select = <5>;
+		cirrus,gpio2-output-enable;
+		status = "disabled";
+	};
+};
+
+&pinctrl_far_alive {
+	amp_top_irq: amp-top-irq-pins {
+		samsung,pins = "gpa6-3";
+		samsung,pin-function = <GS101_PIN_FUNC_EINT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
+
+&pinctrl_gpio_alive {
+	amp_bottom_irq: amp-bottom-irq-pins {
+		samsung,pins = "gpa9-6";
+		samsung,pin-function = <GS101_PIN_FUNC_EINT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
+
+&pinctrl_peric0 {
+	amp_bottom_cs: amp-bottom-cs-pins {
+		samsung,pins = "gpp1-0";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+
+	amp_top_rst: amp-top-rst-pins {
+		samsung,pins = "gpp16-3";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
+
+&pinctrl_peric1 {
+	amp_top_cs: amp-top-cs-pins {
+		samsung,pins = "gpp25-3";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+
+	/* stock pulls MISO down while no chip drives it */
+	amp_miso: amp-miso-pins {
+		samsung,pins = "gpp25-2";
+		samsung,pin-function = <GS101_PIN_FUNC_2>;
+		samsung,pin-pud = <GS101_PIN_PULL_DOWN>;
+	};
+
+	amp_bottom_rst: amp-bottom-rst-pins {
+		samsung,pins = "gpp23-7";
+		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+	};
+};
