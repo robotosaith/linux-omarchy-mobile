@@ -650,6 +650,26 @@
 		};
 	};
 
+	trusty: trusty {
+		compatible = "android,trusty-smc-v1";
+		status = "disabled";
+
+		irq {
+			compatible = "android,trusty-irq-v1";
+			/* Trusty IPIs 8-15 are GIC SGIs 8-15 */
+			ipi-range = <8 15 8>;
+		};
+
+		log {
+			compatible = "android,trusty-log-v1";
+		};
+
+		virtio {
+			compatible = "android,trusty-virtio-v1";
+		};
+	};
+
+
 	soc: soc@0 {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -2125,6 +2145,50 @@
 			clocks = <0>;
 			clock-names = "pclk";
 
+			status = "disabled";
+		};
+
+		/*
+		 * The AoC (audio and sensor DSP), started through Trusty's GSA
+		 * hwmgr; from Google's gs101-aoc.dtsi and gs101-gsa.dtsi. One AoC-to-AP mailbox with 16
+		 * channels on gs101, where gs201 has three.
+		 */
+		gsa: gsa@17c90000 {
+			compatible = "google,gs101-gsa", "google,gs201-gsa";
+			reg = <0x17c90000 0x1000>;
+			reg-names = "mbox";
+			interrupts = <GIC_SPI 447 IRQ_TYPE_LEVEL_HIGH 0>;
+			status = "disabled";
+		};
+
+		aoc_sysmmu: sysmmu@1a090000 {
+			compatible = "google,gs101-aoc-sysmmu", "google,gs201-aoc-sysmmu";
+			reg = <0x1a090000 0x10000>;
+			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH 0>;
+			status = "disabled";
+		};
+
+		aoc_mbox: mailbox@176a0000 {
+			compatible = "google,gs101-aoc-mbox", "google,gs201-aoc-mbox";
+			reg = <0x176a0000 0x1000>;
+			interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH 0>;
+			/* off at hand-off on raven */
+			clocks = <&cmu_apm CLK_GOUT_APM_MAILBOX_AP_AOC_PCLK>;
+			#mbox-cells = <1>;
+			status = "disabled";
+		};
+
+		aoc: aoc@175d0000 {
+			compatible = "google,gs101-aoc", "google,gs201-aoc";
+			reg = <0x175d0000 0x1000>, <0x1a0b0000 0x1000>,
+			      <0x10000000 0x100>, <0x19b00000 0x10000>;
+			reg-names = "aoc_req", "s2mpu", "chipid", "pcu";
+			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH 0>;
+			interrupt-names = "watchdog";
+			memory-region = <&aoc_reserve>;
+			google,gsa = <&gsa>;
+			google,sysmmu = <&aoc_sysmmu>;
+			mboxes = <&aoc_mbox 0>, <&aoc_mbox 1>, <&aoc_mbox 2>, <&aoc_mbox 3>, <&aoc_mbox 4>, <&aoc_mbox 5>, <&aoc_mbox 6>, <&aoc_mbox 7>, <&aoc_mbox 8>, <&aoc_mbox 9>, <&aoc_mbox 10>, <&aoc_mbox 11>, <&aoc_mbox 12>, <&aoc_mbox 13>, <&aoc_mbox 14>, <&aoc_mbox 15>;
 			status = "disabled";
 		};
 
