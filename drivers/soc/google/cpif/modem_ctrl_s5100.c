@@ -2222,8 +2222,11 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 		desc = devm_fwnode_gpiod_get(&pdev->dev, of_fwnode_handle(lines),
 					     mc->cp_gpio[i].node_name, GPIOD_ASIS,
 					     mc->cp_gpio[i].label);
-		if (PTR_ERR(desc) == -ENOENT)
+		if (PTR_ERR(desc) == -ENOENT) {
+			mif_info("%s: no %s-gpios in %pOF\n", mc->cp_gpio[i].label,
+				 mc->cp_gpio[i].node_name, lines);
 			continue;
+		}
 		if (IS_ERR(desc)) {
 			of_node_put(lines);
 			return dev_err_probe(&pdev->dev, PTR_ERR(desc), "%s\n",
@@ -2262,7 +2265,7 @@ static int s5100_get_pdata(struct modem_ctl *mc, struct modem_data *pdata)
 		    i == CP_GPIO_AP2CP_PM_WRST_N)
 			continue;
 		if (!mc->cp_gpio[i].valid) {
-			mif_err("Missing some of GPIOs\n");
+			mif_err("Missing some of GPIOs: %s\n", mc->cp_gpio[i].label);
 			return -EINVAL;
 		}
 	}
