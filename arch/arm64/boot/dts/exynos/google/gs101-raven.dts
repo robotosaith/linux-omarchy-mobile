@@ -13,6 +13,21 @@
 / {
 	model = "Raven";
 	compatible = "google,gs101-raven", "google,gs101";
+
+	/*
+	 * ABL picks the base DTB by soc_id (product id 0x09845000 | major
+	 * revision); the factory vendor_boot carries one per revision. B0 = 1.
+	 */
+	soc_id = <0x09845001 0x0>;
+
+	chosen {
+		/*
+		 * ABL appends its own arguments (console=null among them), so a
+		 * panic is silent: panic=10 reboots instead of hanging. init hands
+		 * over to the Arch root on userdata when it finds one.
+		 */
+		bootargs = "console=tty0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init";
+	};
 };
 
 &acpm_ipc {
@@ -31,6 +46,10 @@
 			};
 		};
 	};
+};
+
+&acpm_tmu {
+	status = "okay";
 };
 
 &cont_splash_mem {
@@ -56,4 +75,22 @@
 	int-m-supply = <&s2mpg10_buck7m>;
 
 	status = "okay";
+};
+
+/*
+ * The CPU zones report the cluster hotspot through ACPM, which can jump by
+ * 30 °C for one sample under a short burst of load. Google's raven
+ * throttles from 90 °C and only has a "hot" trip at 115 °C: keep our
+ * throttling from 75 °C and power off at a sustained 115 °C.
+ */
+&big_crit {
+	temperature = <115000>;
+};
+
+&mid_crit {
+	temperature = <115000>;
+};
+
+&little_crit {
+	temperature = <115000>;
 };
