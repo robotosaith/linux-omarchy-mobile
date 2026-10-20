@@ -30,10 +30,12 @@
 #include <linux/mod_devicetable.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
 #include <drm/drm_mipi_dsi.h>
+#include <video/mipi_display.h>
 #include <drm/drm_panel.h>
 
 #include "gs-dsim.h"
@@ -100,7 +102,36 @@ struct gs_dsim {
 	struct drm_panel *panel;
 	/* the timers in use, NULL if they are not ones from gs_dsim_rates[] */
 	const struct gs_dsim_rate *rate;
+
+	/*
+	 * DECON's main registers, from the optional "google,decon" phandle,
+	 * where no KMS driver runs DECON (simpledrm scans out): its hardware
+	 * trigger is masked while the panel's display is off.
+	 */
+	void __iomem *decon;
 };
+
+#define DECON_TRIG_CON			0x0030
+#define TRIG_CON_HW_TRIG_MASK_DECON	BIT(4)
+
+/*
+ * With the display off, DECON still reads the whole frame at every TE and
+ * sends it to a panel that shows nothing (about 67 mA on raven). Mask its
+ * trigger after display off and unmask it before display on.
+ */
+static void gs_dsim_decon_frames(struct gs_dsim *dsim, bool on)
+{
+	u32 val;
+
+	if (!dsim->decon)
+		return;
+	val = readl(dsim->decon + DECON_TRIG_CON);
+	if (on)
+		val &= ~TRIG_CON_HW_TRIG_MASK_DECON;
+	else
+		val |= TRIG_CON_HW_TRIG_MASK_DECON;
+	writel(val, dsim->decon + DECON_TRIG_CON);
+}
 
 static struct platform_driver gs_dsim_driver;
 
@@ -189,8 +220,8 @@ static int gs_dsim_detach(struct mipi_dsi_host *host,
 	return 0;
 }
 
-static ssize_t gs_dsim_transfer(struct mipi_dsi_host *host,
-				const struct mipi_dsi_msg *msg)
+static ssize_t gs_dsim_transfer_packet(struct mipi_dsi_host *host,
+				       const struct mipi_dsi_msg *msg)
 {
 	struct gs_dsim *dsim = host_to_dsim(host);
 	struct mipi_dsi_packet packet;
@@ -487,11 +518,38 @@ int gs_dsim_panel_wake(struct gs_dsim *dsim, bool enable)
 }
 EXPORT_SYMBOL_GPL(gs_dsim_panel_wake);
 
+static ssize_t gs_dsim_transfer(struct mipi_dsi_host *host,
+				const struct mipi_dsi_msg *msg)
+{
+	struct gs_dsim *dsim = host_to_dsim(host);
+	u8 cmd = 0;
+	ssize_t ret;
+
+	if (msg->type == MIPI_DSI_DCS_SHORT_WRITE && msg->tx_len)
+		cmd = ((const u8 *)msg->tx_buf)[0];
+
+	if (cmd == MIPI_DCS_SET_DISPLAY_ON && READ_ONCE(allow_tx))
+		gs_dsim_decon_frames(dsim, true);
+	ret = gs_dsim_transfer_packet(host, msg);
+	if (cmd == MIPI_DCS_SET_DISPLAY_OFF && ret >= 0)
+		gs_dsim_decon_frames(dsim, false);
+
+	return ret;
+}
+
 static const struct mipi_dsi_host_ops gs_dsim_host_ops = {
 	.attach = gs_dsim_attach,
 	.detach = gs_dsim_detach,
 	.transfer = gs_dsim_transfer,
 };
+
+static void gs_dsim_unmap_decon(void *data)
+{
+	struct gs_dsim *dsim = data;
+
+	gs_dsim_decon_frames(dsim, true);
+	iounmap(dsim->decon);
+}
 
 static int gs_dsim_probe(struct platform_device *pdev)
 {
@@ -517,6 +575,18 @@ static int gs_dsim_probe(struct platform_device *pdev)
 		return PTR_ERR(dsim->regs);
 
 	platform_set_drvdata(pdev, dsim);
+
+	struct device_node *decon_np __free(device_node) =
+		of_parse_phandle(dev->of_node, "google,decon", 0);
+	if (decon_np) {
+		/* not requested: a KMS driver on DECON would own the region */
+		dsim->decon = of_iomap(decon_np, 0);
+		if (!dsim->decon)
+			return -ENOMEM;
+		ret = devm_add_action_or_reset(dev, gs_dsim_unmap_decon, dsim);
+		if (ret)
+			return ret;
+	}
 
 	/* Bootloader state, for the record. Reads only. */
 	gs_dsim_dump(dsim);
@@ -551,6 +621,7 @@ static void gs_dsim_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id gs_dsim_of_match[] = {
+	{ .compatible = "google,gs101-dsim" },
 	{ .compatible = "google,gs201-dsim" },
 	{ /* sentinel */ }
 };
