@@ -537,3 +537,156 @@
 &little_crit {
 	temperature = <115000>;
 };
+
+/*
+ * GSA's pin controller belongs to the secure world: a read of its registers
+ * from Linux raises a synchronous external abort (its debugfs pin list
+ * oopsed and once hung the phone). Nothing here uses its one bank (gps3).
+ */
+&pinctrl_gsactrl {
+	status = "disabled";
+};
+
+/*
+ * Wi-Fi: the BCM4389 on PCIe GEN4A_1 (Google's gs101-common-wlan.dtsi):
+ * WL_REG_ON on gpp14-2. As on cheetah, its DMA buffers come from a
+ * restricted pool below 4 GiB (2 address cells, 1 size cell on gs101).
+ * Google's raven node runs the link without cache coherency.
+ */
+/ {
+	wlan_pwr: regulator-wlan {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan-reg-on";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpp14 2 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <200000>;
+	};
+
+	reserved-memory {
+		wifi_dma_pool: wifi-dma-pool {
+			compatible = "restricted-dma-pool";
+			size = <0x1000000>;
+			alignment = <0x0 0x200000>;
+			/* the chip's writes above 4 GiB are not seen (cheetah) */
+			alloc-ranges = <0x0 0x80000000 0x80000000>;
+		};
+	};
+};
+
+&pcie_1_phy {
+	status = "okay";
+};
+
+&pcie_1 {
+	status = "okay";
+
+	pcie@0,0 {
+		compatible = "pciclass,0604";
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		bus-range = <0x01 0xff>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+		vpcie3v3-supply = <&wlan_pwr>;
+
+		wifi@0,0 {
+			compatible = "pci14e4,4441";
+			reg = <0x10000 0x0 0x0 0x0 0x0>;
+			brcm,board-type = "google,gs101-raven";
+			memory-region = <&wifi_dma_pool>;
+		};
+	};
+};
+
+/ {
+	aliases {
+		/* the modem's first boot stage: cpboot_spi_bus_num = 9 */
+		spi9 = &spi_9;
+	};
+};
+
+/*
+ * Modem: Samsung S5123 on PCIe GEN4A_0 (HSI1), with its control lines from
+ * stock's cpif node (board overlay 6). Raw levels, as Google's CPIF drives
+ * them. The S5123 has no warm-reset lines. The link driver (pcie-gs201-cp)
+ * drives these while pcie_0 is enabled, which only the modem-link-test
+ * bring-up overlay does; the shared memory comes with the modem driver
+ * (MODEM-PLAN.md M3).
+ */
+&pcie_0 {
+	/* the modem's MSI page: MSIs land here, as on stock */
+	memory-region = <&cp_msi_mem>;
+	/* stock's vreg1 and vreg2 (board overlay 6) */
+	vdd085-supply = <&{/firmware/power-management/pmic-1/regulators/ldo16m}>;
+	vdd18-supply = <&{/firmware/power-management/pmic-1/regulators/ldo18m}>;
+
+	modem {
+		compatible = "samsung,s5123-modem";
+		/* stock's cp_shmem order: IPC, MSI, PKTPROC, PKTPROC_UL */
+		memory-region = <&cp_ipc_mem>, <&cp_msi_mem>,
+				<&cp_pktproc_mem>, <&cp_pktproc_ul_mem>;
+		ap2cp-pda-active-gpios = <&gph1 1 GPIO_ACTIVE_HIGH>;
+		ap2cp-cp-pwr-on-gpios = <&gph1 0 GPIO_ACTIVE_HIGH>;
+		ap2cp-nreset-gpios = <&gph1 3 GPIO_ACTIVE_HIGH>;
+		ap2cp-wakeup-gpios = <&gph0 2 GPIO_ACTIVE_HIGH>;
+		ap2cp-dump-noti-gpios = <&gph0 3 GPIO_ACTIVE_HIGH>;
+		cp2ap-ps-hold-gpios = <&gpa9 5 GPIO_ACTIVE_HIGH>;
+		cp2ap-wakeup-gpios = <&gpa8 4 GPIO_ACTIVE_HIGH>;
+		cp2ap-phone-active-gpios = <&gpa8 5 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/*
+ * The modem's first boot stage (the BOOT entry of modem.bin, under 128 KiB)
+ * goes over USI9's SPI before its PCIe side comes up, as on stock (board
+ * overlay 6: native chip select, 2.15 MHz). Disabled until the
+ * modem-spi-test bring-up overlay.
+ */
+&usi9 {
+	samsung,mode = <USI_MODE_SPI>;
+};
+
+&spi_9 {
+	pinctrl-0 = <&spi9_bus &spi9_cs_func>;
+	pinctrl-names = "default";
+	num-cs = <1>;
+
+	cpboot-spi@0 {
+		compatible = "samsung,exynos-cp-spi";
+		reg = <0>;
+		spi-max-frequency = <2150000>;
+	};
+};
+
+/*
+ * The modem's shared memory, as stock's cp_shmem (board overlay 6): IPC,
+ * the MSI page and the packet processor's downlink and uplink buffers. The
+ * modem writes these by DMA once it runs, so Linux must never use them;
+ * our kernel had them as System RAM. Reserved always, as on stock.
+ */
+/ {
+	reserved-memory {
+		cp_ipc_mem: cp-rmem@f0000000 {
+			reg = <0x0 0xf0000000 0x800000>;
+			no-map;
+		};
+
+		cp_msi_mem: cp-msi@f6200000 {
+			reg = <0x0 0xf6200000 0x1000>;
+			no-map;
+		};
+
+		cp_pktproc_mem: cp-rmem1@e8000000 {
+			reg = <0x0 0xe8000000 0x1c00000>;
+			no-map;
+		};
+
+		cp_pktproc_ul_mem: cp-rmem2@ee000000 {
+			reg = <0x0 0xee000000 0x400000>;
+			no-map;
+		};
+	};
+};

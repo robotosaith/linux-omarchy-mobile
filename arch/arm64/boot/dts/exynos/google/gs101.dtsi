@@ -674,7 +674,7 @@
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
-		ranges = <0x0 0x0 0x0 0x40000000>;
+		ranges = <0x0 0x0 0x0 0x80000000>;
 
 		efuse@10000000 {
 			compatible = "google,gs101-otp";
@@ -1811,13 +1811,85 @@
 			};
 		};
 
+		cmu_hsi1: clock-controller@11800000 {
+			compatible = "google,gs101-cmu-hsi1";
+			reg = <0x11800000 0x8000>;
+			#clock-cells = <1>;
+			clocks = <&ext_24_5m>,
+				 <&cmu_top CLK_DOUT_CMU_HSI1_BUS>,
+				 <&cmu_top CLK_DOUT_CMU_HSI1_PCIE>;
+			clock-names = "oscclk", "bus", "pcie";
+			samsung,sysreg = <&sysreg_hsi1>;
+		};
+
+		sysreg_hsi1: syscon@11820000 {
+			compatible = "google,gs101-hsi1-sysreg", "syscon";
+			reg = <0x11820000 0x10000>;
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_SYSREG_HSI1_PCLK>;
+		};
+
 		pinctrl_hsi1: pinctrl@11840000 {
 			compatible = "google,gs101-pinctrl";
 			reg = <0x11840000 0x00001000>;
-			/* TODO: update once support for this CMU exists */
-			clocks = <0>;
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_GPIO_HSI1_PCLK>;
 			clock-names = "pclk";
 			interrupts = <GIC_SPI 471 IRQ_TYPE_LEVEL_HIGH 0>;
+		};
+
+		/*
+		 * PCIe GEN4A_0, the link to the modem (S5123), for the bring-up
+		 * driver pcie-gs201-cp; enabled only by a bring-up overlay. One
+		 * interrupt in stock (SPI 472), used for controller events; the
+		 * modem's MSI page comes with its CPIF node.
+		 */
+		pcie_0: pcie@11920000 {
+			compatible = "google,gs101-pcie-cp";
+			reg = <0x11920000 0x1400>,
+			      <0x11c00000 0x301000>,
+			      <0x40ffe000 0x2000>,
+			      <0x11900000 0x1000>;
+			reg-names = "elbi", "dbi", "config", "ia";
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+			/* PCI 0x14e00000 = CPU 0x40000000, as on gs201 */
+			ranges = <0x82000000 0x0 0x14e00000 0x40000000 0x0 0xff0000>;
+			bus-range = <0x00 0xff>;
+			interrupts = <GIC_SPI 472 IRQ_TYPE_LEVEL_HIGH 0>;
+			interrupt-names = "ctrl";
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_DBI_ACLK_UG>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_MSTR_ACLK_UG>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_SLV_ACLK_UG>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_I_DRIVER_APB_CLK>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_IA_GEN4A_0_I_CLK>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_QE_PCIE_GEN4A_HSI1_ACLK>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_QE_PCIE_GEN4A_HSI1_PCLK>;
+			phys = <&pcie_0_phy>;
+			phy-names = "pcie";
+			pinctrl-0 = <&pcie0_clkreq>, <&pcie0_perst>;
+			pinctrl-names = "active";
+			reset-gpios = <&gph0 0 GPIO_ACTIVE_LOW>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec0>;
+			samsung,sysreg = <&sysreg_hsi1 0x704>;
+			num-lanes = <2>;
+			max-link-speed = <3>;
+			status = "disabled";
+		};
+
+		pcie_0_phy: phy@11950000 {
+			compatible = "google,gs101-pcie-phy";
+			reg = <0x11950000 0x2000>,
+			      <0x11940000 0x1000>,
+			      <0x11921400 0x10>,
+			      <0x11960000 0xd000>;
+			reg-names = "pma", "pcs", "rst", "udbg";
+			clocks = <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCIE_003_PHY_REFCLK_IN>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PHY_UDBG_I_APB_PCLK>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PIPE_PAL_PCIE_I_APB_PCLK>,
+				 <&cmu_hsi1 CLK_GOUT_HSI1_PCIE_GEN4_0_PCS_PMA_PCIEPHY210X2_QCH_I_APB_PCLK>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec0>;
+			#phy-cells = <0>;
+			status = "disabled";
 		};
 
 		cmu_hsi2: clock-controller@14400000 {
@@ -1845,6 +1917,72 @@
 			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_GPIO_HSI2_PCLK>;
 			clock-names = "pclk";
 			interrupts = <GIC_SPI 503 IRQ_TYPE_LEVEL_HIGH 0>;
+		};
+
+		/*
+		 * PCIe GEN4A_1, the Wi-Fi link: the same controller IP as gs201's
+		 * (ip-ver 0x984500), driven by pcie-gs201. Addresses, PERST, the
+		 * memory window and the interrupt from Google's gs101-pcie.dtsi
+		 * and gs101 interrupt map (IRQ_PCIE_GEN4A_1_HSI2 = 509).
+		 */
+		pcie_1: pcie@14520000 {
+			compatible = "google,gs101-pcie";
+			reg = <0x14520000 0x1400>,
+			      <0x14800000 0x301000>,
+			      <0x60ffe000 0x2000>,
+			      <0x14500000 0x1000>;
+			reg-names = "elbi", "dbi", "config", "ia";
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+			ranges = <0x82000000 0x0 0x60000000 0x60000000 0x0 0xff0000>;
+			bus-range = <0x00 0xff>;
+			interrupts = <GIC_SPI 509 IRQ_TYPE_LEVEL_HIGH 0>;
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0 0 0 7>;
+			interrupt-map = <0 0 0 1 &pcie_1_intc 1>,
+					<0 0 0 2 &pcie_1_intc 2>,
+					<0 0 0 3 &pcie_1_intc 3>,
+					<0 0 0 4 &pcie_1_intc 4>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_DBI_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_MSTR_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_SLV_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_I_DRIVER_APB_CLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_IA_GEN4A_1_I_CLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_PCIE_GEN4A_HSI2_ACLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_PCIE_GEN4A_HSI2_PCLK>;
+			phys = <&pcie_1_phy>;
+			phy-names = "pcie";
+			pinctrl-0 = <&pcie1_clkreq>, <&pcie1_perst>;
+			pinctrl-names = "default";
+			reset-gpios = <&gph2 0 GPIO_ACTIVE_LOW>;
+			samsung,cmu = <&cmu_hsi2>;
+			samsung,sysreg = <&sysreg_hsi2 0x730>;
+			num-lanes = <1>;
+			max-link-speed = <2>;
+			status = "disabled";
+
+			pcie_1_intc: legacy-interrupt-controller {
+				#address-cells = <0>;
+				interrupt-controller;
+				#interrupt-cells = <1>;
+			};
+		};
+
+		pcie_1_phy: phy@14550000 {
+			compatible = "google,gs101-pcie-phy";
+			reg = <0x14550000 0x2000>,
+			      <0x14540000 0x1000>,
+			      <0x14521400 0x10>,
+			      <0x14560000 0xd000>;
+			reg-names = "pma", "pcs", "rst", "udbg";
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_PHY_REFCLK_IN>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_PHY_UDBG_I_APB_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_PIPE_PAL_PCIE_I_APB_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_PCIEPHY210X2_QCH_I_APB_PCLK>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec4>;
+			#phy-cells = <0>;
+			status = "disabled";
 		};
 
 		ufs_0: ufs@14700000 {
