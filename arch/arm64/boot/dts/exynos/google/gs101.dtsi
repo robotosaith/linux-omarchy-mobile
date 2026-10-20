@@ -1995,6 +1995,7 @@
 				 <&acpm_ipc GS101_CLK_ACPM_DVFS_G3DL2>;
 			clock-names = "core", "l2";
 			operating-points-v2 = <&gpu_opp_table>;
+			#cooling-cells = <2>;
 			interrupt-names = "job", "mmu", "gpu";
 			interrupts = <GIC_SPI 420 IRQ_TYPE_LEVEL_HIGH 0>,
 				     <GIC_SPI 421 IRQ_TYPE_LEVEL_HIGH 0>,
@@ -2058,6 +2059,12 @@
 					trip = <&big_hotter>;
 					cooling-device = <&cpu6 10 THERMAL_NO_LIMIT>,
 							 <&cpu7 10 THERMAL_NO_LIMIT>;
+				};
+
+				/* the GPU heats the whole die: slow it too */
+				map2 {
+					trip = <&big_hotter>;
+					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 				};
 			};
 		};
@@ -2154,10 +2161,34 @@
 			thermal-sensors = <&acpm_tmu 3>;
 
 			trips {
+				gpu_hot: gpu-hot {
+					temperature = <80000>;
+					hysteresis = <5000>;
+					type = "passive";
+				};
+
+				gpu_hotter: gpu-hotter {
+					temperature = <90000>;
+					hysteresis = <5000>;
+					type = "passive";
+				};
+
 				gpu_crit: gpu-crit {
 					temperature = <110000>;
 					hysteresis = <0>;
 					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&gpu_hot>;
+					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+
+				map1 {
+					trip = <&gpu_hotter>;
+					cooling-device = <&gpu 5 THERMAL_NO_LIMIT>;
 				};
 			};
 		};
