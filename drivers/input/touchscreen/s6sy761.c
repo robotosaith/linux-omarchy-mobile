@@ -748,12 +748,6 @@ static int s6sy761_probe_common(struct s6sy761_data *sdata)
 	if (err)
 		return err;
 
-	/* cancelled before the power-off action above runs */
-	err = devm_delayed_work_autocancel(dev, &sdata->recover_work,
-					   s6sy761_recover);
-	if (err)
-		return err;
-
 	err = s6sy761_hw_init(sdata, &max_x, &max_y);
 	if (err && sdata->bus->bustype == BUS_SPI) {
 		/*
@@ -801,6 +795,16 @@ static int s6sy761_probe_common(struct s6sy761_data *sdata)
 		return err;
 
 	input_set_drvdata(sdata->input, sdata);
+
+	/*
+	 * Set up before the device can be opened (an open may schedule a
+	 * reset), and cancelled after the IRQ is freed but before the input
+	 * device goes and the power-off action runs.
+	 */
+	err = devm_delayed_work_autocancel(dev, &sdata->recover_work,
+					   s6sy761_recover);
+	if (err)
+		return err;
 
 	err = input_register_device(sdata->input);
 	if (err)
