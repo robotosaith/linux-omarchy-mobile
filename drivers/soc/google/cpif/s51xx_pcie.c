@@ -26,6 +26,8 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pci.h>
+#include <linux/ratelimit.h>
+#include <linux/jiffies.h>
 #include <linux/seq_file.h>
 #include <linux/pm_runtime.h>
 //#include <sound/samsung/abox.h>
@@ -52,6 +54,39 @@ static void s51xx_pcie_chk_ep_conf(struct pci_dev *pdev)
 		dev_dbg(&pdev->dev, "0x%02x:  %08x  %08x  %08x  %08x\n",
 				i, val1, val2, val3, val4);
 	}
+}
+
+/* The register dump on a failed doorbell: once a second at most */
+static DEFINE_RATELIMIT_STATE(s51xx_dump_rs, HZ, 1);
+
+/*
+ * A link-down or completion timeout is flagged, yet doorbells still fail
+ * well after it: the recovery it queued did not run or did not help (its
+ * power-on skips a link whose LTSSM still reads L0, and one that the
+ * modem's wake line does not ask for). The flag stays set, so no new event
+ * comes and the retry count that ends in a crash never grows, while every
+ * doorbell fails again. Declare the CP crash once, so the modem's runtime
+ * sees the link is gone instead of an ONLINE modem that answers nothing.
+ */
+#define S51XX_DEAD_LINK_MS	5000
+
+static void s51xx_pcie_check_dead(struct s51xx_pcie *s51xx_pcie,
+				  struct modem_ctl *mc)
+{
+	if (s51xx_pcie->dead_crashed || mc->phone_state != STATE_ONLINE)
+		return;
+	if (!s51xx_pcie->dead_since) {
+		s51xx_pcie->dead_since = jiffies ?: 1;
+		return;
+	}
+	if (time_before(jiffies, s51xx_pcie->dead_since +
+			msecs_to_jiffies(S51XX_DEAD_LINK_MS)))
+		return;
+	s51xx_pcie->dead_crashed = true;
+	mif_err("link down for %u ms and recovery did not clear it: force crash\n",
+		jiffies_to_msecs(jiffies - s51xx_pcie->dead_since));
+	exynos_pcie_rc_register_dump(s51xx_pcie->pcie_channel_num);
+	s5100_force_crash_exit_ext(CRASH_REASON_PCIE_LINKDOWN_RECOVERY_FAILURE);
 }
 
 inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
@@ -90,15 +125,12 @@ inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
 			/* set bme bit */
 			pci_set_master(pdev);
 
-			pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-			mif_info("cmd reg = 0x%04x\n", cmd);
-
 			/* set mse bit */
+			pci_read_config_word(pdev, PCI_COMMAND, &cmd);
 			cmd |= PCI_COMMAND_MEMORY;
 			pci_write_config_word(pdev, PCI_COMMAND, cmd);
 
 			pci_read_config_word(pdev, PCI_COMMAND, &cmd);
-			mif_info("cmd reg = 0x%04x\n", cmd);
 
 			if ((cmd & PCI_COMMAND_MEMORY) &&
 					(cmd & PCI_COMMAND_MASTER) && (cmd != 0xffff))
@@ -106,9 +138,11 @@ inline int s51xx_pcie_send_doorbell_int(struct pci_dev *pdev, int int_num)
 		} while (cnt < 10);
 
 		if (cnt >= 10) {
-			mif_err_limited("BME is not set(cnt=%d)\n", cnt);
-			exynos_pcie_rc_register_dump(
-					s51xx_pcie->pcie_channel_num);
+			mif_err_limited("BME is not set(cnt=%d, cmd reg 0x%04x)\n",
+					cnt, cmd);
+			if (__ratelimit(&s51xx_dump_rs))
+				exynos_pcie_rc_register_dump(
+						s51xx_pcie->pcie_channel_num);
 			goto check_cpl_timeout;
 		}
 	}
@@ -137,23 +171,29 @@ send_doorbell_again:
 
 			goto send_doorbell_again;
 		}
-		mif_err("[Need to CHECK] Can't send doorbell int (0x%x)\n", reg);
-		pci_read_config_dword(pdev, PCI_BASE_ADDRESS_0, &reg);
-		mif_err("Check BAR0 register : %#x\n", reg);
-		exynos_pcie_rc_register_dump(s51xx_pcie->pcie_channel_num);
+		if (__ratelimit(&s51xx_dump_rs)) {
+			mif_err("[Need to CHECK] Can't send doorbell int (0x%x)\n", reg);
+			pci_read_config_dword(pdev, PCI_BASE_ADDRESS_0, &reg);
+			mif_err("Check BAR0 register : %#x\n", reg);
+			exynos_pcie_rc_register_dump(s51xx_pcie->pcie_channel_num);
+		}
 
 		goto check_cpl_timeout;
 	}
 
+	s51xx_pcie->dead_since = 0;
+	s51xx_pcie->dead_crashed = false;
 	return 0;
 
 check_cpl_timeout:
 	if (exynos_pcie_rc_get_cpl_timeout_state(s51xx_pcie->pcie_channel_num) ||
-			exynos_pcie_rc_get_sudden_linkdown_state(s51xx_pcie->pcie_channel_num))
+			exynos_pcie_rc_get_sudden_linkdown_state(s51xx_pcie->pcie_channel_num)) {
 		mif_err_limited("Can't send Interrupt(link_down_retry_cnt: %d, cto_retry_cnt: %d)!!!\n",
 				mc->pcie_linkdown_retry_cnt, mc->pcie_cto_retry_cnt);
-	else
+		s51xx_pcie_check_dead(s51xx_pcie, mc);
+	} else {
 		exynos_pcie_rc_force_linkdown_work(s51xx_pcie->pcie_channel_num);
+	}
 
 	return 0;
 }

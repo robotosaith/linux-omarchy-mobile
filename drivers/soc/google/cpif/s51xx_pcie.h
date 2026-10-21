@@ -40,6 +40,13 @@ struct s51xx_pcie {
 	u32 link_status;
 	bool suspend_try;
 
+	/*
+	 * A link-down that recovery did not clear: when doorbells started
+	 * failing behind it (0: none), and whether the CP crash was declared
+	 */
+	unsigned long dead_since;
+	bool dead_crashed;
+
 	struct exynos_pcie_register_event pcie_event;
 	struct exynos_pcie_register_event pcie_cpl_timeout_event;
 	struct pci_saved_state *pci_saved_configs;
