@@ -16,9 +16,12 @@
 #include <linux/platform_device.h>
 #include <linux/thermal.h>
 
-/* ACPM channel of the TMU service and the sensors (BIG, MID, LITTLE, G3D, ISP, TPU) */
-#define GS101_ACPM_TMU_CHAN	9
+/* The sensors: BIG, MID, LITTLE, G3D, ISP, TPU */
 #define GS101_ACPM_TMU_SENSORS	6
+
+struct gs101_tmu_data {
+	unsigned int acpm_chan;		/* ACPM channel of the TMU service */
+};
 
 struct gs101_tmu;
 
@@ -29,6 +32,7 @@ struct gs101_tmu_sensor {
 
 struct gs101_tmu {
 	struct acpm_handle *handle;
+	unsigned int acpm_chan;
 	struct gs101_tmu_sensor sensors[GS101_ACPM_TMU_SENSORS];
 };
 
@@ -38,7 +42,7 @@ static int gs101_tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 	struct acpm_handle *handle = sensor->tmu->handle;
 	int celsius, ret;
 
-	ret = handle->ops->tmu.read_temp(handle, GS101_ACPM_TMU_CHAN,
+	ret = handle->ops->tmu.read_temp(handle, sensor->tmu->acpm_chan,
 					 sensor->id, &celsius);
 	if (ret)
 		return ret;
@@ -54,20 +58,26 @@ static const struct thermal_zone_device_ops gs101_tmu_ops = {
 static int gs101_tmu_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	const struct gs101_tmu_data *data;
 	struct thermal_zone_device *tz;
 	struct gs101_tmu *tmu;
 	int i, ret, zones = 0;
 
+	data = of_device_get_match_data(dev);
+	if (!data)
+		return -ENODEV;
+
 	tmu = devm_kzalloc(dev, sizeof(*tmu), GFP_KERNEL);
 	if (!tmu)
 		return -ENOMEM;
+	tmu->acpm_chan = data->acpm_chan;
 
 	tmu->handle = devm_acpm_get_by_node(dev, dev->parent->of_node);
 	if (IS_ERR(tmu->handle))
 		return dev_err_probe(dev, PTR_ERR(tmu->handle),
 				     "failed to get the ACPM handle\n");
 
-	ret = tmu->handle->ops->tmu.init(tmu->handle, GS101_ACPM_TMU_CHAN);
+	ret = tmu->handle->ops->tmu.init(tmu->handle, tmu->acpm_chan);
 	if (ret)
 		return dev_err_probe(dev, ret, "ACPM TMU init failed\n");
 
@@ -91,8 +101,12 @@ static int gs101_tmu_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct gs101_tmu_data gs101_tmu_data = {
+	.acpm_chan = 9,
+};
+
 static const struct of_device_id gs101_tmu_of_match[] = {
-	{ .compatible = "google,gs101-acpm-tmu" },
+	{ .compatible = "google,gs101-acpm-tmu", .data = &gs101_tmu_data },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, gs101_tmu_of_match);
