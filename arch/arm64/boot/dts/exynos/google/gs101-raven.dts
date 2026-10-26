@@ -538,6 +538,10 @@
 	temperature = <115000>;
 };
 
+&gpu_crit {
+	temperature = <115000>;
+};
+
 /*
  * GSA's pin controller belongs to the secure world: a read of its registers
  * from Linux raises a synchronous external abort (its debugfs pin list
