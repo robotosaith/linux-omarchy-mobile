@@ -777,6 +777,7 @@ static const struct acpm_ops exynos_acpm_driver_ops = {
 		.clear_tz_irq = acpm_tmu_clear_tz_irq,
 		.suspend = acpm_tmu_suspend,
 		.resume = acpm_tmu_resume,
+		.reg_read = acpm_tmu_reg_read,
 	},
 };
 

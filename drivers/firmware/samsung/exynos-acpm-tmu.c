@@ -26,6 +26,7 @@
 #define ACPM_TMU_INTEN		0x12
 #define ACPM_TMU_CONTROL	0x13
 #define ACPM_TMU_IRQ_CLEAR	0x14
+#define ACPM_TMU_REG_READ	0xfe
 
 #define ACPM_TMU_TX_DATA_LEN	8
 #define ACPM_TMU_RX_DATA_LEN	7
@@ -87,6 +88,30 @@ int acpm_tmu_init(struct acpm_handle *handle, unsigned int acpm_chan_id)
 		return ret;
 
 	return acpm_tmu_to_linux_err(msg.rx.ret);
+}
+
+/* NOT FOR MERGE: read one TMU register through the firmware (Google's TMU_IPC_REG_READ) */
+int acpm_tmu_reg_read(struct acpm_handle *handle, unsigned int acpm_chan_id,
+		      u8 tmu_id, u16 offset, u32 *val)
+{
+	union acpm_tmu_msg msg = {0};
+	struct acpm_xfer xfer;
+	int ret;
+
+	msg.tx.type = ACPM_TMU_REG_READ;
+	msg.tx.rsvd0 = tmu_id;
+	msg.tx.data[0] = offset & 0xff;
+	msg.tx.data[1] = offset >> 8;
+	acpm_set_xfer(&xfer, msg.data, ARRAY_SIZE(msg.data), acpm_chan_id,
+		      true);
+
+	ret = acpm_do_xfer(handle, &xfer);
+	if (ret)
+		return ret;
+
+	*val = msg.rx.data[0] | msg.rx.data[1] << 8 | msg.rx.data[2] << 16 |
+	       (u32)msg.rx.data[3] << 24;
+	return 0;
 }
 
 int acpm_tmu_read_temp(struct acpm_handle *handle, unsigned int acpm_chan_id,

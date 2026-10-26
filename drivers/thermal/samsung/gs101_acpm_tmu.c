@@ -51,6 +51,42 @@ static int gs101_tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 	return 0;
 }
 
+/*
+ * NOT FOR MERGE: initcheck=1 dumps both TMUs' control, probe-enable,
+ * emulation and per-probe threshold/interrupt-enable registers through the
+ * firmware before and after ACPM_TMU_INIT, to show what INIT changes.
+ * Offsets from Google's gs_tmu.h; reads only, within Google's own bounds.
+ */
+static bool initcheck;
+module_param(initcheck, bool, 0444);
+
+static void gs101_tmu_dump(struct device *dev, struct gs101_tmu *tmu,
+			   const char *when)
+{
+	static const u16 top[] = { 0x50, 0x54, 0x60, 0x70, 0xb0 };
+	static const u16 probe[] = { 0xd0, 0xd4, 0xd8, 0xdc, 0xf0 };
+	struct acpm_handle *h = tmu->handle;
+	u32 val;
+	int id, p, i, ret;
+
+	for (id = 0; id < 2; id++) {
+		for (i = 0; i < ARRAY_SIZE(top); i++) {
+			ret = h->ops->tmu.reg_read(h, tmu->acpm_chan, id, top[i], &val);
+			dev_info(dev, "initcheck %s tmu%d 0x%03x = 0x%08x (%d)\n",
+				 when, id, top[i], val, ret);
+		}
+		for (p = 0; p < 16; p++) {
+			for (i = 0; i < ARRAY_SIZE(probe); i++) {
+				u16 off = p * 0x50 + probe[i];
+
+				ret = h->ops->tmu.reg_read(h, tmu->acpm_chan, id, off, &val);
+				dev_info(dev, "initcheck %s tmu%d p%d 0x%03x = 0x%08x (%d)\n",
+					 when, id, p, off, val, ret);
+			}
+		}
+	}
+}
+
 static const struct thermal_zone_device_ops gs101_tmu_ops = {
 	.get_temp = gs101_tmu_get_temp,
 };
@@ -77,9 +113,13 @@ static int gs101_tmu_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(tmu->handle),
 				     "failed to get the ACPM handle\n");
 
+	if (initcheck)
+		gs101_tmu_dump(dev, tmu, "before");
 	ret = tmu->handle->ops->tmu.init(tmu->handle, tmu->acpm_chan);
 	if (ret)
 		return dev_err_probe(dev, ret, "ACPM TMU init failed\n");
+	if (initcheck)
+		gs101_tmu_dump(dev, tmu, "after");
 
 	for (i = 0; i < GS101_ACPM_TMU_SENSORS; i++) {
 		tmu->sensors[i].tmu = tmu;

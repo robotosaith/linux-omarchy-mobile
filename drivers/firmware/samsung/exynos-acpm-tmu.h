@@ -25,4 +25,6 @@ int acpm_tmu_clear_tz_irq(struct acpm_handle *handle, unsigned int acpm_chan_id,
 			  u8 tz);
 int acpm_tmu_suspend(struct acpm_handle *handle, unsigned int acpm_chan_id);
 int acpm_tmu_resume(struct acpm_handle *handle, unsigned int acpm_chan_id);
+int acpm_tmu_reg_read(struct acpm_handle *handle, unsigned int acpm_chan_id,
+		      u8 tmu_id, u16 offset, u32 *val);
 #endif /* __EXYNOS_ACPM_TMU_H__ */

@@ -49,6 +49,8 @@ struct acpm_tmu_ops {
 			    unsigned int acpm_chan_id, u8 tz);
 	int (*suspend)(struct acpm_handle *handle, unsigned int acpm_chan_id);
 	int (*resume)(struct acpm_handle *handle, unsigned int acpm_chan_id);
+	int (*reg_read)(struct acpm_handle *handle, unsigned int acpm_chan_id,
+			u8 tmu_id, u16 offset, u32 *val);
 };
 
 struct acpm_ops {
