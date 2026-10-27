@@ -1066,3 +1066,17 @@
 		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
 	};
 };
+
+&reserved_memory {
+	/*
+	 * Same region and layout as Google's gs101 kernel, so a log written by
+	 * this kernel survives a warm reset and can be read from
+	 * /sys/fs/pstore on the next boot.
+	 */
+	ramoops@fd3ff000 {
+		compatible = "ramoops";
+		reg = <0x0 0xfd3ff000 0x400000>;
+		console-size = <0x200000>;
+		pmsg-size = <0x200000>;
+	};
+};
