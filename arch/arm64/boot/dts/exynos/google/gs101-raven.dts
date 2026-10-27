@@ -1080,3 +1080,15 @@
 		pmsg-size = <0x200000>;
 	};
 };
+
+/*
+ * Haptics: a Cirrus Logic CS40L25A at 0x43 (Google's gs101-raviole-audio.dtsi),
+ * reset on gpp24-0, high out of reset. Its interrupt (gpa6-5) isn't used yet.
+ */
+&hsi2c_8 {
+	haptics@43 {
+		compatible = "cirrus,cs40l25a";
+		reg = <0x43>;
+		reset-gpios = <&gpp24 0 GPIO_ACTIVE_HIGH>;
+	};
+};
