@@ -406,7 +406,8 @@
 		sound-name-prefix = "Top";
 		cirrus,subsystem-id = "raven";
 		cirrus,boost-type = <0>;
-		cirrus,boost-peak-milliamp = <3500>;
+		/* stock's "speaker" path: 1.70 A top, 1.90 A bottom */
+		cirrus,boost-peak-milliamp = <1700>;
 		cirrus,boost-ind-nanohenry = <1000>;
 		cirrus,boost-cap-microfarad = <30>;
 		cirrus,asp-sdout-hiz = <3>;
@@ -432,7 +433,7 @@
 		sound-name-prefix = "Bottom";
 		cirrus,subsystem-id = "raven";
 		cirrus,boost-type = <0>;
-		cirrus,boost-peak-milliamp = <3500>;
+		cirrus,boost-peak-milliamp = <1900>;
 		cirrus,boost-ind-nanohenry = <1000>;
 		cirrus,boost-cap-microfarad = <30>;
 		cirrus,asp-sdout-hiz = <3>;
