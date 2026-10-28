@@ -13,11 +13,12 @@
  *
  * The sequence and register layout follow Cirrus Logic's GPL driver for this
  * part as shipped in Google's Pixel 6 kernels (google-modules/amplifiers,
- * cs40l25/cs40l2x.c). Only the CS40L25A B1 is supported. Not supported yet:
- * the IRQ (amplifier errors are left masked), hibernation, the closed-loop
- * braking configuration (cs40l25a_clab.bin), calibration, the codec path,
- * and the board's boost values from the device tree (stock raven's are
- * built in).
+ * cs40l25/cs40l2x.c; Copyright (C) 2018-2020 Cirrus Logic, Inc.), on which
+ * the errata, IRQ mask and boost tables here are based. Only the CS40L25A
+ * B1 is supported. Not supported yet: the IRQ (amplifier errors are left
+ * masked), hibernation, the closed-loop braking configuration
+ * (cs40l25a_clab.bin), calibration, the codec path, and the board's boost
+ * values from the device tree (stock raven's are built in).
  */
 
 #include <linux/bitfield.h>
@@ -576,9 +577,9 @@ static void cs40l25_dsp_remove(void *data)
 	cs_dsp_remove(&cs40l25->dsp);
 	/* back to basic mode, as at boot */
 	if (cs40l25->reset) {
-		gpiod_set_value_cansleep(cs40l25->reset, 0);
-		usleep_range(2000, 2100);
 		gpiod_set_value_cansleep(cs40l25->reset, 1);
+		usleep_range(2000, 2100);
+		gpiod_set_value_cansleep(cs40l25->reset, 0);
 	}
 }
 
@@ -668,16 +669,16 @@ static int cs40l25_probe(struct i2c_client *client)
 		return dev_err_probe(dev, PTR_ERR(cs40l25->regmap), "regmap\n");
 
 	/*
-	 * A reset pulse, as cs40l2x's probe: low, then 1 releases it (the line
-	 * is active high in stock's DT, 1 meaning "out of reset"); the chip
-	 * boots into basic mode from its ROM.
+	 * A reset pulse, as cs40l2x's probe: asserted (the line is described
+	 * active low, as for the CS40L26), then released; the chip boots into
+	 * basic mode from its ROM.
 	 */
-	cs40l25->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
+	cs40l25->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(cs40l25->reset))
 		return dev_err_probe(dev, PTR_ERR(cs40l25->reset), "reset GPIO\n");
 	if (cs40l25->reset) {
 		usleep_range(2000, 2100);
-		gpiod_set_value_cansleep(cs40l25->reset, 1);
+		gpiod_set_value_cansleep(cs40l25->reset, 0);
 		usleep_range(1000, 1100);
 	}
 

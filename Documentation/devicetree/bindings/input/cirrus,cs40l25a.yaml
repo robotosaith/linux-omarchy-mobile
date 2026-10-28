@@ -27,7 +27,7 @@ properties:
 
   reset-gpios:
     maxItems: 1
-    description: The chip's RESET line; high takes it out of reset.
+    description: The chip's active-low RESET line; asserted holds it in reset.
 
 required:
   - compatible
@@ -47,6 +47,6 @@ examples:
         haptics@43 {
             compatible = "cirrus,cs40l25a";
             reg = <0x43>;
-            reset-gpios = <&gpio 0 GPIO_ACTIVE_HIGH>;
+            reset-gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
         };
     };

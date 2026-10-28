@@ -177,7 +177,8 @@ config INPUT_CS40L25_VIBRA
 	tristate "Cirrus Logic CS40L25A haptic driver"
 	depends on I2C
 	select REGMAP_I2C
-	select CS_DSP
+	select FW_CS_DSP
+	select INPUT_FF_MEMLESS
 	help
 	  Say Y here to enable force feedback (FF_RUMBLE) on the Cirrus Logic
 	  CS40L25A boosted haptic driver, as in the Pixel 6 Pro. Needs the
