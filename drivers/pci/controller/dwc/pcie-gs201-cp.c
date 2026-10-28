@@ -264,6 +264,7 @@ struct gs201_pcie_cp {
 	bool link_up;
 	bool atu_done;
 	bool pm_dbi;			/* PHY inited for a system sleep, link down */
+	bool pm_sleep;			/* between prepare and complete */
 	bool msi_ready;		/* MSI domain and chained handlers set up */
 	bool msi_irqs_on;	/* their parent interrupts enabled */
 	struct gs201_pcie_cp_queue {	/* MSI blocks 1..CP_MSI_QUEUES */
@@ -1021,6 +1022,20 @@ static void cp_link_down(struct gs201_pcie_cp *cp)
 		phy_power_off(cp->phy);
 		cp->phy_on = false;
 	}
+	cp->link_up = false;
+	cp->atu_done = false;
+	/*
+	 * In a system sleep the PCI core still has to reach the root port
+	 * (gs201_pcie_cp_prepare()): keep the PHY inited and the root port's
+	 * configuration space open; complete isolates the PHY. The link comes
+	 * and goes during the sleep too, and taking the PHY away here once
+	 * left the root port unreachable again.
+	 */
+	if (cp->pm_sleep && cp->phy_inited) {
+		cp_cfg_allow(cp, true, false);
+		cp->pm_dbi = true;
+		return;
+	}
 	if (cp->phy_inited) {
 		phy_exit(cp->phy);	/* clocks only: isolation stays off */
 		cp->phy_inited = false;
@@ -1028,8 +1043,6 @@ static void cp_link_down(struct gs201_pcie_cp *cp)
 	/* Only undo what link_up did: an untouched PHY is still isolated. */
 	if (was_inited)
 		cp_phy_isolate(cp);
-	cp->link_up = false;
-	cp->atu_done = false;
 }
 
 /*
@@ -2175,7 +2188,8 @@ MODULE_DEVICE_TABLE(of, gs201_pcie_cp_of_match);
  * for the sleep and exynos_pcie_resume_complete() puts it back, bring the
  * PHY up (no link: PERST# stays asserted, the endpoint stays closed) from
  * prepare to complete, so the root port is reachable while the PCI core
- * handles it. A poweron in between keeps the PHY as it finds it.
+ * handles it. A poweron in between keeps the PHY as it finds it, and a
+ * link down in between keeps it up (cp_link_down()).
  */
 static int gs201_pcie_cp_prepare(struct device *dev)
 {
@@ -2183,6 +2197,7 @@ static int gs201_pcie_cp_prepare(struct device *dev)
 	int ret;
 
 	mutex_lock(&cp->lock);
+	cp->pm_sleep = true;
 	if (cp->phy_inited || !cp->bridge || !cp->bridge->bus)
 		goto out;
 
@@ -2215,6 +2230,7 @@ static void gs201_pcie_cp_complete(struct device *dev)
 	struct gs201_pcie_cp *cp = dev_get_drvdata(dev);
 
 	mutex_lock(&cp->lock);
+	cp->pm_sleep = false;
 	if (cp->pm_dbi) {
 		cp->pm_dbi = false;
 		/* a poweron since prepare owns the PHY now */
