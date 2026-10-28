@@ -263,6 +263,7 @@ struct gs201_pcie_cp {
 	bool phy_on;
 	bool link_up;
 	bool atu_done;
+	bool pm_dbi;			/* PHY inited for a system sleep, link down */
 	bool msi_ready;		/* MSI domain and chained handlers set up */
 	bool msi_irqs_on;	/* their parent interrupts enabled */
 	struct gs201_pcie_cp_queue {	/* MSI blocks 1..CP_MSI_QUEUES */
@@ -2130,6 +2131,74 @@ static const struct of_device_id gs201_pcie_cp_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, gs201_pcie_cp_of_match);
 
+/*
+ * System sleep with the link down: the controller is unclocked and its PHY
+ * isolated (cp_link_down()), so the PCI core's save, D3hot and restore of
+ * the root port read all ones ("device inaccessible") and leave it marked
+ * D3cold, and the modem's endpoint can't be brought to D0 below it again:
+ * after the first suspend the next poweron finds no working endpoint. As
+ * Google's exynos_pcie_suspend_prepare() takes the PHY out of isolation
+ * for the sleep and exynos_pcie_resume_complete() puts it back, bring the
+ * PHY up (no link: PERST# stays asserted, the endpoint stays closed) from
+ * prepare to complete, so the root port is reachable while the PCI core
+ * handles it. A poweron in between keeps the PHY as it finds it.
+ */
+static int gs201_pcie_cp_prepare(struct device *dev)
+{
+	struct gs201_pcie_cp *cp = dev_get_drvdata(dev);
+	int ret;
+
+	mutex_lock(&cp->lock);
+	if (cp->phy_inited || !cp->bridge || !cp->bridge->bus)
+		goto out;
+
+	gpiod_direction_output(cp->perst, 1);
+	if (cp->pins_active) {
+		ret = pinctrl_select_state(cp->pinctrl, cp->pins_active);
+		if (ret)
+			goto fail;
+	}
+	phy_set_bus_width(cp->phy, cp->num_lanes);
+	ret = phy_init(cp->phy);	/* PMU isolation off, then PHY power-down */
+	if (ret)
+		goto fail;
+	cp_dbi_allow(cp, true);
+	cp_cfg_allow(cp, true, false);
+	cp->phy_inited = true;
+	cp->pm_dbi = true;
+	goto out;
+
+fail:
+	/* not a reason to refuse the sleep: it only costs the next poweron */
+	dev_warn(cp->dev, "PHY up for the sleep: %d\n", ret);
+out:
+	mutex_unlock(&cp->lock);
+	return 0;
+}
+
+static void gs201_pcie_cp_complete(struct device *dev)
+{
+	struct gs201_pcie_cp *cp = dev_get_drvdata(dev);
+
+	mutex_lock(&cp->lock);
+	if (cp->pm_dbi) {
+		cp->pm_dbi = false;
+		/* a poweron since prepare owns the PHY now */
+		if (!cp->link_up && cp->phy_inited) {
+			cp_cfg_allow(cp, false, false);
+			phy_exit(cp->phy);
+			cp->phy_inited = false;
+			cp_phy_isolate(cp);
+		}
+	}
+	mutex_unlock(&cp->lock);
+}
+
+static const struct dev_pm_ops gs201_pcie_cp_pm_ops = {
+	.prepare = gs201_pcie_cp_prepare,
+	.complete = gs201_pcie_cp_complete,
+};
+
 static struct platform_driver gs201_pcie_cp_driver = {
 	.probe = gs201_pcie_cp_probe,
 	.remove = gs201_pcie_cp_remove,
@@ -2138,6 +2207,7 @@ static struct platform_driver gs201_pcie_cp_driver = {
 		.name = "gs201-pcie-cp",
 		.of_match_table = gs201_pcie_cp_of_match,
 		.suppress_bind_attrs = true,	/* the modem driver uses it */
+		.pm = pm_sleep_ptr(&gs201_pcie_cp_pm_ops),
 	},
 };
 module_platform_driver(gs201_pcie_cp_driver);
