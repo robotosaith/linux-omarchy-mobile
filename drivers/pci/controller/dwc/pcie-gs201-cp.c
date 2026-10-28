@@ -1311,6 +1311,38 @@ static void cp_ep_save(struct gs201_pcie_cp *cp)
 	cp->ep_state = pci_store_saved_state(cp->ep);
 }
 
+/*
+ * PCIe r6.0 sec 6.6.1: after the link comes up, the endpoint needs not answer
+ * configuration requests at once. The modem's mostly does, since its link
+ * comes and goes while it stays awake, but after a long system sleep its
+ * first replies read all ones: the D0 transition and the restore that
+ * followed failed, its Bus Master Enable read as 0xffff, and the dead-link
+ * check crashed the CP (raven MODEM-PLAN section 11). Wait for its Vendor
+ * ID before anything touches it, as the PCI core does for a new device.
+ */
+#define CP_EP_READY_MS		1000
+
+static void cp_ep_wait_ready(struct gs201_pcie_cp *cp)
+{
+	ktime_t start = ktime_get();
+	s64 waited;
+	u32 id;
+
+	if (!cp->ep)
+		return;
+	for (;;) {
+		pci_bus_read_config_dword(cp->ep->bus, cp->ep->devfn, PCI_VENDOR_ID, &id);
+		waited = ktime_ms_delta(ktime_get(), start);
+		if (!PCI_POSSIBLE_ERROR(id) || waited >= CP_EP_READY_MS)
+			break;
+		usleep_range(10000, 11000);
+	}
+	if (PCI_POSSIBLE_ERROR(id))
+		dev_warn(cp->dev, "endpoint not answering %lld ms after link up\n", waited);
+	else if (waited)
+		dev_info(cp->dev, "endpoint answered %lld ms after link up\n", waited);
+}
+
 static void cp_ep_restore(struct gs201_pcie_cp *cp)
 {
 	if (!cp->ep || !cp->ep_state)
@@ -1406,10 +1438,12 @@ int gs201_pcie_cp_poweron(unsigned int speed)
 	ret = cp_bus(cp);
 	if (ret)
 		goto err;
-	if (scan)
+	if (scan) {
 		cp_ep_save(cp);
-	else
+	} else {
+		cp_ep_wait_ready(cp);
 		cp_ep_restore(cp);
+	}
 	goto out;
 
 err:
