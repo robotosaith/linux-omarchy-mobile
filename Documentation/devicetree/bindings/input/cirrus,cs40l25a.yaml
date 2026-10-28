@@ -29,6 +29,20 @@ properties:
     maxItems: 1
     description: The chip's active-low RESET line; asserted holds it in reset.
 
+  cirrus,boost-peak-microamp:
+    description: Peak current limit of the boost inductor.
+    minimum: 1600000
+    maximum: 4500000
+    multipleOf: 50000
+    default: 4500000
+
+  cirrus,boost-ctl-microvolt:
+    description: Maximum boost converter output voltage.
+    minimum: 2550000
+    maximum: 11000000
+    multipleOf: 50000
+    default: 11000000
+
 required:
   - compatible
   - reg
@@ -48,5 +62,7 @@ examples:
             compatible = "cirrus,cs40l25a";
             reg = <0x43>;
             reset-gpios = <&gpio 0 GPIO_ACTIVE_LOW>;
+            cirrus,boost-peak-microamp = <4500000>;
+            cirrus,boost-ctl-microvolt = <7500000>;
         };
     };

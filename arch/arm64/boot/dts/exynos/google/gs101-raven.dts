@@ -1105,6 +1105,9 @@
 		compatible = "cirrus,cs40l25a";
 		reg = <0x43>;
 		reset-gpios = <&gpp24 0 GPIO_ACTIVE_LOW>;
+		/* stock's boost: 4.5 A peak, 7.5 V (CLAB) */
+		cirrus,boost-peak-microamp = <4500000>;
+		cirrus,boost-ctl-microvolt = <7500000>;
 	};
 };
 

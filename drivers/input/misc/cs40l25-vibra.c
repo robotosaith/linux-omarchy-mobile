@@ -17,8 +17,9 @@
  * the errata, IRQ mask and boost tables here are based. Only the CS40L25A
  * B1 is supported. Not supported yet: the IRQ (amplifier errors are left
  * masked), hibernation, the closed-loop braking configuration
- * (cs40l25a_clab.bin), calibration, the codec path, and the board's boost
- * values from the device tree (stock raven's are built in).
+ * (cs40l25a_clab.bin), calibration and the codec path. The boost's peak
+ * current and voltage come from the device tree; its inductor and capacitor
+ * terms are stock raven's.
  */
 
 #include <linux/bitfield.h>
@@ -154,15 +155,21 @@ static const struct reg_sequence cs40l25_dsp_errata[] = {
 /*
  * Stock's boost (gs101-raviole-audio.dtsi: 1000 nH, 4 uF, 4500 mA peak,
  * 7.5 V, OVP 12 V) through cs40l2x_boost_config()'s tables: LBST 0, the
- * capacitor in range 0, so K1 0x24, K2 0x24, slope 0x75; peak
- * (4500 - 1600) / 50 + 0x10 = 0x4a; 7.5 V (7500 - 2550) / 50 + 1 = 0x64;
- * OVP ((12000 - 9000) / 125) * 2 = 0x30, enabled (bit 8).
+ * capacitor in range 0, so K1 0x24, K2 0x24, slope 0x75; OVP
+ * ((12000 - 9000) / 125) * 2 = 0x30, enabled (bit 8). The peak current and
+ * the voltage are the board's (cs40l25_boost_from_dt()), encoded as cs40l2x
+ * does: peak (mA - 1600) / 50 + 0x10, 4500 mA = 0x4a; voltage
+ * (mV - 2550) / 50 + 1, 7.5 V = 0x64.
  */
+#define CS40L25_BST_IPK_MIN_UA		1600000
+#define CS40L25_BST_IPK_MAX_UA		4500000
+#define CS40L25_BST_UV_MIN		2550000
+#define CS40L25_BST_UV_MAX		11000000
+#define CS40L25_BST_STEP		50000
+
 static const struct reg_sequence cs40l25_boost[] = {
 	{ CS40L25_BSTCVRT_COEFF,	0x00002424 },
 	{ CS40L25_BSTCVRT_SLOPE_LBST,	0x00007500 },
-	{ CS40L25_BSTCVRT_PEAK_CUR,	0x0000004a },
-	{ CS40L25_BSTCVRT_VCTRL1,	0x00000064 },
 	{ CS40L25_BSTCVRT_OVERVOLT_CTRL, 0x00000130 },
 };
 
@@ -223,6 +230,8 @@ struct cs40l25 {
 	bool playing;
 	struct cs_dsp_coeff_ctl *gain_ctl;
 	struct cs_dsp_coeff_ctl *end_ctl;
+	u32 bst_ipk_ua;
+	u32 bst_uv;
 };
 
 static bool cs40l25_writeable(struct device *dev, unsigned int reg)
@@ -233,6 +242,17 @@ static bool cs40l25_writeable(struct device *dev, unsigned int reg)
 static bool cs40l25_readable(struct device *dev, unsigned int reg)
 {
 	return true;
+}
+
+/*
+ * From the DSP's XMEM up: its memories and core registers. cs_dsp and this
+ * driver read them directly, but the debugfs "registers" file must not walk
+ * them over I2C while the firmware runs (reading a CS35L41's whole register
+ * file during playback stopped its DSP algorithm on the Pixel 7 Pro).
+ */
+static bool cs40l25_precious(struct device *dev, unsigned int reg)
+{
+	return reg >= CS40L25_XMEM_UNPACKED24_0;
 }
 
 /* everything but the OTP block, which this driver never writes */
@@ -246,6 +266,7 @@ static const struct regmap_config cs40l25_regmap = {
 	.readable_reg = cs40l25_readable,
 	.writeable_reg = cs40l25_writeable,
 	.volatile_reg = cs40l25_readable,
+	.precious_reg = cs40l25_precious,
 	.cache_type = REGCACHE_NONE,
 };
 
@@ -319,6 +340,27 @@ static int cs40l25_handover(struct cs40l25 *cs40l25)
 				      ARRAY_SIZE(cs40l25_rev_b0_errata));
 }
 
+/* The board's boost limits, with the binding's defaults (cs40l2x's). */
+static int cs40l25_boost_from_dt(struct cs40l25 *cs40l25)
+{
+	struct device *dev = cs40l25->dev;
+
+	cs40l25->bst_ipk_ua = CS40L25_BST_IPK_MAX_UA;
+	cs40l25->bst_uv = CS40L25_BST_UV_MAX;
+	device_property_read_u32(dev, "cirrus,boost-peak-microamp", &cs40l25->bst_ipk_ua);
+	device_property_read_u32(dev, "cirrus,boost-ctl-microvolt", &cs40l25->bst_uv);
+	if (cs40l25->bst_ipk_ua < CS40L25_BST_IPK_MIN_UA ||
+	    cs40l25->bst_ipk_ua > CS40L25_BST_IPK_MAX_UA ||
+	    cs40l25->bst_ipk_ua % CS40L25_BST_STEP)
+		return dev_err_probe(dev, -EINVAL, "boost peak %u uA out of range\n",
+				     cs40l25->bst_ipk_ua);
+	if (cs40l25->bst_uv < CS40L25_BST_UV_MIN || cs40l25->bst_uv > CS40L25_BST_UV_MAX ||
+	    cs40l25->bst_uv % CS40L25_BST_STEP)
+		return dev_err_probe(dev, -EINVAL, "boost voltage %u uV out of range\n",
+				     cs40l25->bst_uv);
+	return 0;
+}
+
 /*
  * cs40l2x_init() on a B1 without an IRQ line: the boost, its short test
  * (the boost on at a fixed voltage for 10 ms, then the short-error flag),
@@ -327,10 +369,14 @@ static int cs40l25_handover(struct cs40l25 *cs40l25)
 static int cs40l25_init(struct cs40l25 *cs40l25)
 {
 	struct regmap *regmap = cs40l25->regmap;
-	unsigned int val;
+	unsigned int ipk, vbst, val;
 	int ret;
 
+	ipk = (cs40l25->bst_ipk_ua - CS40L25_BST_IPK_MIN_UA) / CS40L25_BST_STEP + 0x10;
+	vbst = (cs40l25->bst_uv - CS40L25_BST_UV_MIN) / CS40L25_BST_STEP + 1;
 	ret = regmap_multi_reg_write(regmap, cs40l25_boost, ARRAY_SIZE(cs40l25_boost)) ?:
+	      regmap_write(regmap, CS40L25_BSTCVRT_PEAK_CUR, ipk) ?:
+	      regmap_write(regmap, CS40L25_BSTCVRT_VCTRL1, vbst) ?:
 	      regmap_update_bits(regmap, CS40L25_BSTCVRT_VCTRL2, CS40L25_BST_CTL_SEL_MASK,
 				 CS40L25_BST_CTL_SEL_CP_VAL) ?:
 	      regmap_update_bits(regmap, CS40L25_PWR_CTRL1, CS40L25_GLOBAL_EN,
@@ -659,6 +705,9 @@ static int cs40l25_probe(struct i2c_client *client)
 	if (!cs40l25)
 		return -ENOMEM;
 	cs40l25->dev = dev;
+	ret = cs40l25_boost_from_dt(cs40l25);
+	if (ret)
+		return ret;
 	spin_lock_init(&cs40l25->level_lock);
 	mutex_init(&cs40l25->lock);
 	INIT_WORK(&cs40l25->play_work, cs40l25_play_work);
