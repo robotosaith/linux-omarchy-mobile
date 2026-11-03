@@ -1609,7 +1609,7 @@ static struct bcm_device_data bcm4354_device_data = {
 };
 
 static struct bcm_device_data bcm4389_device_data = {
-	.power_on_delay_ms = 30,
+	.power_on_delay_ms = 100,
 };
 
 static struct bcm_device_data bcm43438_device_data = {
